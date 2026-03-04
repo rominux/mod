@@ -16,7 +16,7 @@ public class MixinHandledScreen {
     @Inject(method = "render", at = @At("RETURN"))
     public void onRender(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
         AbstractContainerScreen<?> screen = (AbstractContainerScreen<?>) (Object) this;
-        ExperimentSolver.onScreenRender(screen);
+        ExperimentSolver.onScreenRender(screen, guiGraphics);
         QuickNavOverlay.renderButton(guiGraphics, mouseX, mouseY);
     }
 
