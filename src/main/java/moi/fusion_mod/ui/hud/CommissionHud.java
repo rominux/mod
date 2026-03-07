@@ -154,20 +154,25 @@ public class CommissionHud implements JarvisGuiManager.JarvisHud {
     }
 
     @Override
-    public void render(GuiGraphics graphics, float tickDelta) {
+    public void render(GuiGraphics graphics, float tickDelta, int offsetX, int offsetY) {
         updateCommissions();
 
         Minecraft mc = Minecraft.getInstance();
         if (mc.font == null)
             return;
 
-        // Comm list title header
-        graphics.drawString(mc.font, "\u00A73\u00A7lCommissions", 0, 0, 0xFFFFFF);
+        // Background box (like pasunhack)
+        int height = 12 + (currentCommissions.size() * 10);
+        int width = 130;
+        graphics.fill(offsetX - 2, offsetY - 2, offsetX + width, offsetY + height, 0x90000000);
+
+        // Title header — use Component.literal() and shadow=true for visibility
+        graphics.drawString(mc.font, Component.literal("\u00A73\u00A7lCommissions"), offsetX, offsetY, 0xFFAA00, true);
 
         // Render commission lines
-        int y = 10;
+        int y = offsetY + 12;
         for (String line : currentCommissions) {
-            graphics.drawString(mc.font, line, 0, y, 0xFFFFFF);
+            graphics.drawString(mc.font, Component.literal(line), offsetX, y, 0xFFFFFF, true);
             y += 10;
         }
     }

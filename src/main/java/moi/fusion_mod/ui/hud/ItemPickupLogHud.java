@@ -4,6 +4,7 @@ import moi.fusion_mod.config.FusionConfig;
 import moi.fusion_mod.ui.layout.JarvisGuiManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 import org.joml.Vector2i;
 import org.joml.Vector2ic;
 
@@ -41,19 +42,24 @@ public class ItemPickupLogHud implements JarvisGuiManager.JarvisHud {
     }
 
     @Override
-    public void render(GuiGraphics graphics, float tickDelta) {
+    public void render(GuiGraphics graphics, float tickDelta, int offsetX, int offsetY) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.font == null)
             return;
 
         // Emulating SkyHanni VerticalContainerRenderable logic
         // E.g. "+ 1x Mite Gel"
-        int y = 0;
-        graphics.drawString(mc.font, "§e§lItem Log", 0, y, 0xFFFFFF);
-        y += 10;
+        int y = offsetY;
+
+        // Background box
+        int height = 12 + (pickupLog.size() * 10);
+        graphics.fill(offsetX - 2, offsetY - 2, offsetX + 150, offsetY + height, 0x90000000);
+
+        graphics.drawString(mc.font, Component.literal("\u00A7e\u00A7lItem Log"), offsetX, y, 0xFFFFFF, true);
+        y += 12;
 
         for (String line : pickupLog) {
-            graphics.drawString(mc.font, line, 0, y, 0xFFFFFF);
+            graphics.drawString(mc.font, Component.literal(line), offsetX, y, 0xFFFFFF, true);
             y += 10;
         }
     }

@@ -199,8 +199,9 @@ public class ConfigScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-        // Draw background
-        renderBackground(graphics, mouseX, mouseY, delta);
+        // In 1.21.10, super.render() already calls renderBackground() internally,
+        // which applies a blur effect. Calling renderBackground() here too causes
+        // "Can only blur once per frame" crash. So we skip the explicit call.
 
         int screenW = this.width;
 

@@ -2,6 +2,7 @@ package moi.fusion_mod;
 
 import moi.fusion_mod.config.FusionConfig;
 import moi.fusion_mod.economy.ItemTooltipListener;
+import moi.fusion_mod.economy.PriceDataManager;
 import moi.fusion_mod.hollows.ChestEspRenderer;
 import moi.fusion_mod.hollows.CrystalHollowsMapHud;
 import moi.fusion_mod.ui.layout.JarvisGuiManager;
@@ -34,6 +35,9 @@ public class Fusion_modClient implements ClientModInitializer {
         ));
 
         JarvisGuiManager.initializeHuds();
+
+        // Start background price data fetching (Bazaar, LBIN, NPC prices)
+        PriceDataManager.init();
 
         registerEvents();
     }

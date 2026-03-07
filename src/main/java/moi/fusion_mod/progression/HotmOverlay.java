@@ -4,6 +4,7 @@ import moi.fusion_mod.config.FusionConfig;
 import moi.fusion_mod.ui.layout.JarvisGuiManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 import org.joml.Vector2i;
 import org.joml.Vector2ic;
 
@@ -42,13 +43,13 @@ public class HotmOverlay implements JarvisGuiManager.JarvisHud {
     }
 
     @Override
-    public void render(GuiGraphics graphics, float tickDelta) {
+    public void render(GuiGraphics graphics, float tickDelta, int offsetX, int offsetY) {
         net.minecraft.client.gui.Font font = Minecraft.getInstance().font;
 
-        // Render box and text relative to the translated position (0, 0) since
-        // JarvisGuiManager uses graphics.pose().translate()
-        graphics.fill(-2, -2, 148, 12, 0x80000000); // Background box
-        graphics.drawString(font, "§bSky Mall§8: " + activePerk, 0, 0, 0xFFFFFF); // Perk label
+        // Render box and text at the absolute offset position
+        graphics.fill(offsetX - 2, offsetY - 2, offsetX + 148, offsetY + 12, 0x80000000);
+        graphics.drawString(font, Component.literal("\u00A7bSky Mall\u00A78: " + activePerk),
+                offsetX, offsetY, 0xFFFFFF, true);
     }
 
     /**

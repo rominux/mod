@@ -42,7 +42,7 @@ public class DrillFuelBarHud implements JarvisGuiManager.JarvisHud {
     }
 
     @Override
-    public void render(GuiGraphics graphics, float tickDelta) {
+    public void render(GuiGraphics graphics, float tickDelta, int offsetX, int offsetY) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.font == null)
             return;
@@ -85,11 +85,14 @@ public class DrillFuelBarHud implements JarvisGuiManager.JarvisHud {
                     int filledWidth = (int) (barWidth * percentage);
 
                     // Draw Background
-                    graphics.fill(0, 0, barWidth, 10, 0x80000000);
+                    graphics.fill(offsetX, offsetY, offsetX + barWidth, offsetY + 10, 0x80000000);
                     // Draw Fuel Bar (Green)
-                    graphics.fill(0, 0, filledWidth, 10, 0xFF00FF00);
-                    // Draw Text
-                    graphics.drawCenteredString(mc.font, currentFuel + " / " + maxFuel, barWidth / 2, 1, 0xFFFFFF);
+                    graphics.fill(offsetX, offsetY, offsetX + filledWidth, offsetY + 10, 0xFF00FF00);
+                    // Draw Text — use Component.literal + shadow for visibility
+                    String fuelText = currentFuel + " / " + maxFuel;
+                    int textWidth = mc.font.width(fuelText);
+                    graphics.drawString(mc.font, Component.literal(fuelText),
+                            offsetX + barWidth / 2 - textWidth / 2, offsetY + 1, 0xFFFFFF, true);
 
                 } catch (NumberFormatException ignored) {
                 }

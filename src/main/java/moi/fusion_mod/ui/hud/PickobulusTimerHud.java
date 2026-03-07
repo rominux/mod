@@ -38,7 +38,7 @@ public class PickobulusTimerHud implements JarvisGuiManager.JarvisHud {
     }
 
     @Override
-    public void render(GuiGraphics graphics, float tickDelta) {
+    public void render(GuiGraphics graphics, float tickDelta, int offsetX, int offsetY) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.font == null || mc.player == null)
             return;
@@ -82,9 +82,13 @@ public class PickobulusTimerHud implements JarvisGuiManager.JarvisHud {
             }
         }
 
-        int y = 0;
+        int y = offsetY;
+        // Background box
+        int height = lines.size() * 10 + 4;
+        graphics.fill(offsetX - 2, offsetY - 2, offsetX + 120, offsetY + height, 0x90000000);
+
         for (String line : lines) {
-            graphics.drawString(mc.font, line, 0, y, 0xFFFFFF);
+            graphics.drawString(mc.font, Component.literal(line), offsetX, y, 0xFFFFFF, true);
             y += 10;
         }
     }

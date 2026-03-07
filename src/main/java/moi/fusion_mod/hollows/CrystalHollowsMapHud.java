@@ -146,12 +146,15 @@ public class CrystalHollowsMapHud implements JarvisGuiManager.JarvisHud {
     }
 
     @Override
-    public void render(GuiGraphics graphics, float tickDelta) {
+    public void render(GuiGraphics graphics, float tickDelta, int offsetX, int offsetY) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.font == null) return;
 
-        // ── Scale transform (from CrystalsHudWidget.renderWidget) ───────
+        // ── Use pose transform to position and scale the entire map ────
+        // We translate to the absolute offset first, then apply map scale.
+        // All internal coordinates remain relative (0,0 = top-left of map).
         graphics.pose().pushMatrix();
+        graphics.pose().translate(offsetX, offsetY);
         graphics.pose().scale(mapScale, mapScale);
 
         // ── Draw map background ─────────────────────────────────────────
@@ -222,7 +225,7 @@ public class CrystalHollowsMapHud implements JarvisGuiManager.JarvisHud {
         graphics.blit(MAP_ICON, 0, 0, 2, 0, 5, 7, 8, 8);
         graphics.pose().popMatrix();
 
-        graphics.pose().popMatrix(); // pop scale transform
+        graphics.pose().popMatrix(); // pop translate+scale transform
     }
 
     // ── Coordinate transform (EXACT from CrystalsHudWidget) ─────────────
