@@ -77,6 +77,8 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
     private String greenhouseTimer = "";
 
     // Hub data
+    private String bankBalance = "";
+    private String bankInterest = "";
     private String slayerQuest = "";
     private String cookieBuff = "";
     private String godPotion = "";
@@ -115,6 +117,12 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
             Pattern.compile("\\s*Plots:\\s*(.+)");
     private static final Pattern SPRAY_PATTERN =
             Pattern.compile("\\s*Spray:\\s*(.+)");
+
+    // Tab list Bank/Interest patterns (SkyHanni TabWidget)
+    private static final Pattern BANK_TAB_PATTERN =
+            Pattern.compile("Bank:\\s*(?<amount>[^§]+?)(?:\\s*/\\s*(?<personal>.*))?$");
+    private static final Pattern INTEREST_TAB_PATTERN =
+            Pattern.compile("Interest:\\s*(?<time>[^§]+?)(?:\\s*\\((?<amount>[^)]+)\\))?$");
 
     // Slayer quest from scoreboard (SkyblockAddons)
     private static final Pattern SLAYER_TYPE_PATTERN =
@@ -329,6 +337,8 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
         visitorCount = 0;
         visitorTimer = "";
         jacobTimer = "";
+        bankBalance = "";
+        bankInterest = "";
         slayerQuest = "";
         cookieBuff = "";
         godPotion = "";
@@ -401,6 +411,26 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
             Matcher godPotTabMatcher = GOD_POTION_TAB_PATTERN.matcher(stripped);
             if (godPotTabMatcher.find()) {
                 godPotion = godPotTabMatcher.group(1).trim();
+            }
+
+            // ── Bank balance from tab list ─────────────────────────
+            Matcher bankMatcher = BANK_TAB_PATTERN.matcher(stripped);
+            if (bankMatcher.find()) {
+                bankBalance = bankMatcher.group("amount").trim();
+                String personal = bankMatcher.group("personal");
+                if (personal != null && !personal.trim().isEmpty()) {
+                    bankBalance += " / " + personal.trim();
+                }
+            }
+
+            // ── Interest from tab list ─────────────────────────────
+            Matcher interestMatcher = INTEREST_TAB_PATTERN.matcher(stripped);
+            if (interestMatcher.find()) {
+                bankInterest = interestMatcher.group("time").trim();
+                String amount = interestMatcher.group("amount");
+                if (amount != null && !amount.trim().isEmpty()) {
+                    bankInterest += " (" + amount.trim() + ")";
+                }
             }
 
             // ── Next Visitor timer ──────────────────────────────────
@@ -828,12 +858,21 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
         result = result.replace("{greenhouse_timer}",
                 FusionConfig.isGardenShowGreenhouse() ? greenhouseTimer : "");
 
-        // Hub placeholders
-        result = result.replace("{mayor}", mayorName);
-        result = result.replace("{minister}", ministerName);
-        result = result.replace("{slayer_quest}", slayerQuest);
-        result = result.replace("{cookie_buff}", cookieBuff);
-        result = result.replace("{god_potion}", godPotion);
+        // Hub placeholders (respect individual toggles)
+        result = result.replace("{mayor}",
+                FusionConfig.isHubShowMayor() ? mayorName : "");
+        result = result.replace("{minister}",
+                FusionConfig.isHubShowMayor() ? ministerName : "");
+        result = result.replace("{bank}",
+                FusionConfig.isHubShowBank() ? bankBalance : "");
+        result = result.replace("{interest}",
+                FusionConfig.isHubShowBank() ? bankInterest : "");
+        result = result.replace("{slayer_quest}",
+                FusionConfig.isHubShowSlayers() ? slayerQuest : "");
+        result = result.replace("{cookie_buff}",
+                FusionConfig.isHubShowCookie() ? cookieBuff : "");
+        result = result.replace("{god_potion}",
+                FusionConfig.isHubShowGodPot() ? godPotion : "");
 
         return result;
     }
@@ -934,6 +973,10 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
         if (template.contains("{mayor}")) return 0xFFFFAA00;
         // Minister (gold)
         if (template.contains("{minister}")) return 0xFFFFAA00;
+        // Bank (gold)
+        if (template.contains("{bank}")) return 0xFFFFAA00;
+        // Interest (yellow)
+        if (template.contains("{interest}")) return 0xFFFFFF55;
         // Slayer quest (red)
         if (template.contains("{slayer_quest}")) return 0xFFFF5555;
         // Cookie buff (light purple)

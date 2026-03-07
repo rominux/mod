@@ -156,6 +156,10 @@ public class ItemPickupLogHud implements JarvisGuiManager.JarvisHud {
         entries.clear();
     }
 
+    /**
+     * New entries are appended at the END of the list (newest last).
+     * Rendering draws from top to bottom, so newest item appears at bottom.
+     */
     private void addGain(String itemName, int amount) {
         // Try to merge with existing entry for the same item
         for (PickupEntry entry : entries) {
@@ -166,10 +170,10 @@ public class ItemPickupLogHud implements JarvisGuiManager.JarvisHud {
             }
         }
 
-        // Add new entry
-        entries.add(0, new PickupEntry(itemName, amount));
+        // Add new entry at the end (newest at bottom)
+        entries.add(new PickupEntry(itemName, amount));
         if (entries.size() > MAX_ENTRIES) {
-            entries.remove(entries.size() - 1);
+            entries.remove(0); // Remove oldest (top)
         }
     }
 
@@ -187,15 +191,7 @@ public class ItemPickupLogHud implements JarvisGuiManager.JarvisHud {
         Minecraft mc = Minecraft.getInstance();
         if (mc.font == null || entries.isEmpty()) return;
 
-        // Position from bottom-left, above the chat area (~48px from bottom)
-        int screenHeight = mc.getWindow().getGuiScaledHeight();
-        int totalHeight = entries.size() * 11 + 4;
-        int startY = screenHeight - 48 - totalHeight;
-
-        int x = offsetX;
-        int y = startY;
-
-        // Background box (semi-transparent)
+        // Compute the max text width for right-alignment
         int maxWidth = 0;
         for (PickupEntry entry : entries) {
             String text = "\u00A7a+ " + entry.amount + "x \u00A7f" + entry.itemName;
@@ -204,17 +200,34 @@ public class ItemPickupLogHud implements JarvisGuiManager.JarvisHud {
         }
         maxWidth += 6; // padding
 
-        graphics.fill(x - 2, startY - 2, x + maxWidth, startY + totalHeight, 0x80000000);
+        // Anchor to bottom-right, above chat area (~48px from bottom)
+        int screenWidth = graphics.guiWidth();
+        int screenHeight = graphics.guiHeight();
+        int totalHeight = entries.size() * 11 + 4;
 
+        // Right edge with 4px margin from screen edge
+        int rightX = screenWidth - 4;
+        int startX = rightX - maxWidth;
+        int startY = screenHeight - 48 - totalHeight;
+
+        // Background box (semi-transparent)
+        graphics.fill(startX - 2, startY - 2, rightX, startY + totalHeight, 0x80000000);
+
+        // Draw entries top-to-bottom (oldest at top, newest at bottom)
+        int y = startY;
         for (PickupEntry entry : entries) {
             // Fade out in the last 20 ticks
             float alpha = entry.ticksRemaining < 20 ? entry.ticksRemaining / 20.0f : 1.0f;
             int alphaInt = (int) (alpha * 255);
-            if (alphaInt < 10) continue;
+            if (alphaInt < 10) { y += 11; continue; }
 
             int color = (alphaInt << 24) | 0xFFFFFF;
             String text = "\u00A7a+ " + entry.amount + "x \u00A7f" + entry.itemName;
-            graphics.drawString(mc.font, Component.literal(text), x, y, color);
+
+            // Right-align text
+            int textWidth = mc.font.width(text);
+            int textX = rightX - textWidth - 2;
+            graphics.drawString(mc.font, Component.literal(text), textX, y, color);
             y += 11;
         }
     }

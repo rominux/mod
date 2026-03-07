@@ -119,6 +119,30 @@ public class ConfigScreen extends Screen {
         garden.add(new ToggleOption("Show Jacob Contest", "Show Jacob's Contest timer and status",
                 FusionConfig::isGardenShowJacobContest, FusionConfig::setGardenShowJacobContest));
         categories.put("Garden", garden);
+
+        // ── Hub ──
+        List<ToggleOption> hub = new ArrayList<>();
+        hub.add(new ToggleOption("Show Mayor", "Display current Mayor and Minister in Hub HUD",
+                FusionConfig::isHubShowMayor, FusionConfig::setHubShowMayor));
+        hub.add(new ToggleOption("Show Bank", "Display bank balance and interest timer",
+                FusionConfig::isHubShowBank, FusionConfig::setHubShowBank));
+        hub.add(new ToggleOption("Show Slayers", "Display active slayer quest progress",
+                FusionConfig::isHubShowSlayers, FusionConfig::setHubShowSlayers));
+        hub.add(new ToggleOption("Show Cookie Buff", "Display Booster Cookie buff status",
+                FusionConfig::isHubShowCookie, FusionConfig::setHubShowCookie));
+        hub.add(new ToggleOption("Show God Potion", "Display God Potion active timer",
+                FusionConfig::isHubShowGodPot, FusionConfig::setHubShowGodPot));
+        categories.put("Hub", hub);
+
+        // ── Macros ──
+        List<ToggleOption> macros = new ArrayList<>();
+        macros.add(new ToggleOption("Auto Miner", "Toggle auto-mining nearby configured blocks",
+                FusionConfig::isAutoMinerEnabled, FusionConfig::setAutoMinerEnabled));
+        macros.add(new ToggleOption("Precision Mining", "Use precise crosshair targeting for mining",
+                FusionConfig::isAutoMinerPrecision, FusionConfig::setAutoMinerPrecision));
+        macros.add(new ToggleOption("Farm Helper", "Toggle automatic farming macro",
+                FusionConfig::isFarmHelperEnabled, FusionConfig::setFarmHelperEnabled));
+        categories.put("Macros", macros);
     }
 
     // ── Screen lifecycle ────────────────────────────────────────────────────

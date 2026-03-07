@@ -1,13 +1,14 @@
 package moi.fusion_mod.hollows;
 
+import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.ShapeRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4f;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -24,31 +25,72 @@ public class ChestEspRenderer {
         }
 
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null) {
+        if (client.player == null || client.level == null) {
             return;
         }
 
-        Vec3 cameraPos = context.worldState().cameraRenderState.pos;
+        Vec3 cameraPos = client.gameRenderer.getMainCamera().getPosition();
         VertexConsumer vertexConsumer = context.consumers().getBuffer(RenderType.lines());
 
-        // In Skyblocker, they fetch:
-        // float[] color =
-        // SkyblockerConfigManager.get().mining.crystalHollows.chestHighlightColor.getComponents(new
-        // float[]{0, 0, 0, 0});
-        // We supply a default orange ESP color here.
-        float[] color = new float[] { 1.0f, 0.5f, 0.0f, 1.0f };
+        // Default orange ESP color
+        float r = 1.0f, g = 0.5f, b = 0.0f, a = 1.0f;
+
+        PoseStack matrices = context.matrices();
 
         for (BlockPos chest : activeChests) {
-            // Extracted EXACT line from Skyblocker's extractRendering method:
-            // collector.submitOutlinedBox(AABB.ofSize(chest.getCenter().subtract(0, 0.0625,
-            // 0), 0.885, 0.885, 0.885), color, color[3], 3, false);
+            // Verify the chest still exists in the world
+            if (!client.level.getBlockState(chest).hasBlockEntity()) {
+                continue;
+            }
 
-            // Ported mathematically to standard Fabric rendering logic:
             Vec3 center = chest.getCenter().subtract(0, 0.0625, 0);
             AABB aabb = AABB.ofSize(center, 0.885, 0.885, 0.885).move(-cameraPos.x, -cameraPos.y, -cameraPos.z);
 
-            ShapeRenderer.renderLineBox(context.matrices().last(), vertexConsumer, aabb, color[0], color[1], color[2],
-                    color[3]);
+            drawBox(matrices, vertexConsumer, aabb, r, g, b, a);
         }
+    }
+
+    /**
+     * Draws a wireframe box using line segments.
+     * Same approach as WaypointRenderer.drawBox.
+     */
+    private static void drawBox(PoseStack matrices, VertexConsumer vertexConsumer,
+                                 AABB box, float r, float g, float b, float a) {
+        Matrix4f matrix = matrices.last().pose();
+        float minX = (float) box.minX;
+        float minY = (float) box.minY;
+        float minZ = (float) box.minZ;
+        float maxX = (float) box.maxX;
+        float maxY = (float) box.maxY;
+        float maxZ = (float) box.maxZ;
+
+        // 12 edges of the box
+        vertexConsumer.addVertex(matrix, minX, minY, minZ).setColor(r, g, b, a).setNormal(1, 0, 0);
+        vertexConsumer.addVertex(matrix, maxX, minY, minZ).setColor(r, g, b, a).setNormal(1, 0, 0);
+        vertexConsumer.addVertex(matrix, minX, minY, minZ).setColor(r, g, b, a).setNormal(0, 1, 0);
+        vertexConsumer.addVertex(matrix, minX, maxY, minZ).setColor(r, g, b, a).setNormal(0, 1, 0);
+        vertexConsumer.addVertex(matrix, minX, minY, minZ).setColor(r, g, b, a).setNormal(0, 0, 1);
+        vertexConsumer.addVertex(matrix, minX, minY, maxZ).setColor(r, g, b, a).setNormal(0, 0, 1);
+
+        vertexConsumer.addVertex(matrix, maxX, maxY, minZ).setColor(r, g, b, a).setNormal(0, -1, 0);
+        vertexConsumer.addVertex(matrix, minX, maxY, minZ).setColor(r, g, b, a).setNormal(0, -1, 0);
+        vertexConsumer.addVertex(matrix, maxX, maxY, minZ).setColor(r, g, b, a).setNormal(-1, 0, 0);
+        vertexConsumer.addVertex(matrix, maxX, minY, minZ).setColor(r, g, b, a).setNormal(-1, 0, 0);
+        vertexConsumer.addVertex(matrix, maxX, maxY, minZ).setColor(r, g, b, a).setNormal(0, 0, 1);
+        vertexConsumer.addVertex(matrix, maxX, maxY, maxZ).setColor(r, g, b, a).setNormal(0, 0, 1);
+
+        vertexConsumer.addVertex(matrix, minX, maxY, maxZ).setColor(r, g, b, a).setNormal(1, 0, 0);
+        vertexConsumer.addVertex(matrix, maxX, maxY, maxZ).setColor(r, g, b, a).setNormal(1, 0, 0);
+        vertexConsumer.addVertex(matrix, minX, maxY, maxZ).setColor(r, g, b, a).setNormal(0, -1, 0);
+        vertexConsumer.addVertex(matrix, minX, minY, maxZ).setColor(r, g, b, a).setNormal(0, -1, 0);
+        vertexConsumer.addVertex(matrix, minX, maxY, maxZ).setColor(r, g, b, a).setNormal(0, 0, -1);
+        vertexConsumer.addVertex(matrix, minX, maxY, minZ).setColor(r, g, b, a).setNormal(0, 0, -1);
+
+        vertexConsumer.addVertex(matrix, maxX, minY, maxZ).setColor(r, g, b, a).setNormal(-1, 0, 0);
+        vertexConsumer.addVertex(matrix, minX, minY, maxZ).setColor(r, g, b, a).setNormal(-1, 0, 0);
+        vertexConsumer.addVertex(matrix, maxX, minY, maxZ).setColor(r, g, b, a).setNormal(0, 1, 0);
+        vertexConsumer.addVertex(matrix, maxX, maxY, maxZ).setColor(r, g, b, a).setNormal(0, 1, 0);
+        vertexConsumer.addVertex(matrix, maxX, minY, maxZ).setColor(r, g, b, a).setNormal(0, 0, -1);
+        vertexConsumer.addVertex(matrix, maxX, minY, minZ).setColor(r, g, b, a).setNormal(0, 0, -1);
     }
 }

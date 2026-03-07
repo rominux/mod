@@ -5,6 +5,8 @@ import moi.fusion_mod.economy.ItemTooltipListener;
 import moi.fusion_mod.economy.PriceDataManager;
 import moi.fusion_mod.hollows.ChestEspRenderer;
 import moi.fusion_mod.hollows.CrystalHollowsMapHud;
+import moi.fusion_mod.macros.AutoMiner;
+import moi.fusion_mod.macros.FarmHelper;
 import moi.fusion_mod.ui.hud.ItemPickupLogHud;
 import moi.fusion_mod.ui.hud.ZoneInfoHud;
 import moi.fusion_mod.ui.layout.JarvisGuiManager;
@@ -34,6 +36,8 @@ import java.util.regex.Pattern;
 
 public class Fusion_modClient implements ClientModInitializer {
     public static KeyMapping configKeybind;
+    public static KeyMapping autoMinerKeybind;
+    public static KeyMapping farmHelperKeybind;
 
     // Tick counter for periodic tasks (Crystal Hollows map discovery runs every 40 ticks)
     private int tickCounter = 0;
@@ -50,6 +54,18 @@ public class Fusion_modClient implements ClientModInitializer {
             "key.fusion_mod.config",
             GLFW.GLFW_KEY_G,
             KeyMapping.Category.register(ResourceLocation.parse("fusion_mod:general"))
+        ));
+
+        autoMinerKeybind = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+            "key.fusion_mod.auto_miner",
+            GLFW.GLFW_KEY_KP_1,
+            KeyMapping.Category.register(ResourceLocation.parse("fusion_mod:macros"))
+        ));
+
+        farmHelperKeybind = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+            "key.fusion_mod.farm_helper",
+            GLFW.GLFW_KEY_KP_2,
+            KeyMapping.Category.register(ResourceLocation.parse("fusion_mod:macros"))
         ));
 
         JarvisGuiManager.initializeHuds();
@@ -136,6 +152,22 @@ public class Fusion_modClient implements ClientModInitializer {
                 if (client.screen == null) {
                     client.setScreen(FusionConfig.createDisplayScreen(client.screen));
                 }
+            }
+
+            // ── Macro keybinds ─────────────────────────────────────────
+            while (autoMinerKeybind.consumeClick()) {
+                AutoMiner.toggle();
+            }
+            while (farmHelperKeybind.consumeClick()) {
+                FarmHelper.toggle();
+            }
+
+            // ── Macro tick handlers ────────────────────────────────────
+            if (FusionConfig.isAutoMinerEnabled() && AutoMiner.isEnabled()) {
+                AutoMiner.tick(client);
+            }
+            if (FusionConfig.isFarmHelperEnabled() && FarmHelper.isEnabled()) {
+                FarmHelper.tick(client);
             }
 
             // ── Periodic tick tasks ─────────────────────────────────────

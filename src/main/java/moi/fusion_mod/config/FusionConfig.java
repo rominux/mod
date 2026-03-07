@@ -96,11 +96,19 @@ public class FusionConfig {
         // ══════════════════════════════════════════════════════════════════
         // Hub
         // ══════════════════════════════════════════════════════════════════
+        public boolean hubShowMayor = true;
+        public boolean hubShowBank = true;
+        public boolean hubShowSlayers = true;
+        public boolean hubShowCookie = true;
+        public boolean hubShowGodPot = true;
+
         /** HUD layout for Hub zone */
         public List<String> hubHudLayout = Arrays.asList(
                 "{location}",
                 "Mayor: {mayor}",
                 "Minister: {minister}",
+                "Bank: {bank}",
+                "Interest: {interest}",
                 "{slayer_quest}",
                 "",
                 "Cookie Buff: {cookie_buff}",
@@ -117,6 +125,21 @@ public class FusionConfig {
         // Legacy fields kept for backward compatibility with old configs
         public boolean commissionsHudEnabled = true;
         public boolean hotmOverlayEnabled = false;
+
+        // ══════════════════════════════════════════════════════════════════
+        // Macros
+        // ══════════════════════════════════════════════════════════════════
+        public boolean autoMinerEnabled = false;
+        public List<String> autoMinerBlocks = Arrays.asList(
+                "minecraft:diamond_ore", "minecraft:deepslate_diamond_ore",
+                "minecraft:mithril_ore", "minecraft:titanium_ore"
+        );
+        public boolean autoMinerPrecision = true;
+
+        public boolean farmHelperEnabled = false;
+        public int farmHelperMacroType = 0;  // 0 = S-Shape Vertical Crop
+        public float farmHelperCustomYaw = 0f;
+        public float farmHelperCustomPitch = 3f;
     }
 
     // ── Initialization ──────────────────────────────────────────────────────
@@ -163,6 +186,22 @@ public class FusionConfig {
     public static boolean isGardenShowGreenhouse() { return data.gardenShowGreenhouse; }
     public static boolean isGardenShowJacobContest() { return data.gardenShowJacobContest; }
 
+    // Hub
+    public static boolean isHubShowMayor() { return data.hubShowMayor; }
+    public static boolean isHubShowBank() { return data.hubShowBank; }
+    public static boolean isHubShowSlayers() { return data.hubShowSlayers; }
+    public static boolean isHubShowCookie() { return data.hubShowCookie; }
+    public static boolean isHubShowGodPot() { return data.hubShowGodPot; }
+
+    // Macros
+    public static boolean isAutoMinerEnabled() { return data.autoMinerEnabled; }
+    public static List<String> getAutoMinerBlocks() { return data.autoMinerBlocks; }
+    public static boolean isAutoMinerPrecision() { return data.autoMinerPrecision; }
+    public static boolean isFarmHelperEnabled() { return data.farmHelperEnabled; }
+    public static int getFarmHelperMacroType() { return data.farmHelperMacroType; }
+    public static float getFarmHelperCustomYaw() { return data.farmHelperCustomYaw; }
+    public static float getFarmHelperCustomPitch() { return data.farmHelperCustomPitch; }
+
     // HUD Layouts
     public static List<String> getMiningHudLayout() { return data.miningHudLayout; }
     public static List<String> getGardenHudLayout() { return data.gardenHudLayout; }
@@ -206,6 +245,22 @@ public class FusionConfig {
     public static void setGardenShowGreenhouse(boolean v) { data.gardenShowGreenhouse = v; save(); }
     public static void setGardenShowJacobContest(boolean v) { data.gardenShowJacobContest = v; save(); }
 
+    // Hub
+    public static void setHubShowMayor(boolean v) { data.hubShowMayor = v; save(); }
+    public static void setHubShowBank(boolean v) { data.hubShowBank = v; save(); }
+    public static void setHubShowSlayers(boolean v) { data.hubShowSlayers = v; save(); }
+    public static void setHubShowCookie(boolean v) { data.hubShowCookie = v; save(); }
+    public static void setHubShowGodPot(boolean v) { data.hubShowGodPot = v; save(); }
+
+    // Macros
+    public static void setAutoMinerEnabled(boolean v) { data.autoMinerEnabled = v; save(); }
+    public static void setAutoMinerBlocks(List<String> v) { data.autoMinerBlocks = v; save(); }
+    public static void setAutoMinerPrecision(boolean v) { data.autoMinerPrecision = v; save(); }
+    public static void setFarmHelperEnabled(boolean v) { data.farmHelperEnabled = v; save(); }
+    public static void setFarmHelperMacroType(int v) { data.farmHelperMacroType = v; save(); }
+    public static void setFarmHelperCustomYaw(float v) { data.farmHelperCustomYaw = v; save(); }
+    public static void setFarmHelperCustomPitch(float v) { data.farmHelperCustomPitch = v; save(); }
+
     // Legacy compat
     public static void setCommissionsHudEnabled(boolean v) { data.zoneInfoHudEnabled = v; save(); }
     public static void setHotmOverlayEnabled(boolean v) { data.hotmOverlayEnabled = v; save(); }
@@ -237,6 +292,7 @@ public class FusionConfig {
                     if (data.gardenHudLayout == null) data.gardenHudLayout = new ConfigData().gardenHudLayout;
                     if (data.hubHudLayout == null) data.hubHudLayout = new ConfigData().hubHudLayout;
                     if (data.defaultHudLayout == null) data.defaultHudLayout = new ConfigData().defaultHudLayout;
+                    if (data.autoMinerBlocks == null) data.autoMinerBlocks = new ConfigData().autoMinerBlocks;
                 }
             }
         } catch (Exception e) {
