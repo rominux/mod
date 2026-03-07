@@ -4,7 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import moi.fusion_mod.config.FusionConfig;
-import moi.fusion_mod.ui.hud.CommissionHud;
+import moi.fusion_mod.ui.hud.ZoneInfoHud;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
@@ -44,7 +44,7 @@ import java.util.*;
 public class WaypointRenderer {
 
     /**
-     * Simple waypoint data class used by CommissionHud.
+     * Simple waypoint data class used by ZoneInfoHud.
      */
     public static class SimpleWaypoint {
         public final String name;
@@ -66,7 +66,7 @@ public class WaypointRenderer {
         if (mc.player == null || mc.level == null) return;
 
         boolean showWaypoints = FusionConfig.isWaypointsEnabled() && FusionConfig.isCommissionWaypointsEnabled();
-        boolean showPickobulus = FusionConfig.isPickobulusTimerEnabled();
+        boolean showPickobulus = FusionConfig.isPickobulusPreviewEnabled();
 
         if (!showWaypoints && !showPickobulus) return;
 
@@ -78,7 +78,7 @@ public class WaypointRenderer {
                 : mc.renderBuffers().bufferSource();
 
         // ── Pickobulus 5x5x5 preview box ────────────────────────────────
-        if (showPickobulus && CommissionHud.isPickobulusAvailable) {
+        if (showPickobulus && ZoneInfoHud.isPickobulusAvailable) {
             String itemName = mc.player.getMainHandItem().isEmpty()
                     ? ""
                     : mc.player.getMainHandItem().getHoverName().getString().toLowerCase();
@@ -115,12 +115,12 @@ public class WaypointRenderer {
         }
 
         // ── Commission waypoints ────────────────────────────────────────
-        if (showWaypoints && CommissionHud.isInDwarvenMines) {
+        if (showWaypoints && ZoneInfoHud.isInDwarvenMines) {
             Font font = mc.font;
             MultiBufferSource.BufferSource immediate = mc.renderBuffers().bufferSource();
 
             // Sort waypoints by priority (mithril=1 > titanium=2 > other=3)
-            List<SimpleWaypoint> sorted = new ArrayList<>(CommissionHud.waypoints);
+            List<SimpleWaypoint> sorted = new ArrayList<>(ZoneInfoHud.waypoints);
             sorted.sort((w1, w2) -> {
                 String n1 = w1.name.toLowerCase();
                 String n2 = w2.name.toLowerCase();

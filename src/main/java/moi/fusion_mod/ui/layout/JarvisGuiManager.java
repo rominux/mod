@@ -46,9 +46,8 @@ public class JarvisGuiManager implements HudRenderCallback {
      * HudRenderCallback. This replaces the old mixin-based approach.
      */
     public static void initializeHuds() {
-        huds.add(new moi.fusion_mod.ui.hud.CommissionHud());
+        huds.add(new moi.fusion_mod.ui.hud.ZoneInfoHud());
         huds.add(new moi.fusion_mod.ui.hud.DrillFuelBarHud());
-        huds.add(new moi.fusion_mod.ui.hud.PickobulusTimerHud());
         huds.add(new moi.fusion_mod.ui.hud.ItemPickupLogHud());
         huds.add(new moi.fusion_mod.progression.HotmOverlay());
         huds.add(new moi.fusion_mod.hollows.CrystalHollowsMapHud());

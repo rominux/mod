@@ -10,16 +10,16 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Central configuration for Fusion Mod.
+ * Config is saved to config/fusion_mod.json using GSON.
  *
- * Persistence approach adapted from:
- *   - doc/Skyblocker/.../config/SkyblockerConfigManager.java (GSON JSON file)
- *   - doc/SkyHanni/.../config/ConfigManager.kt (GSON auto-save)
- *
- * All feature toggles are consolidated here so ConfigScreen can bind to them.
- * Config is saved to {@code config/fusion_mod.json} using GSON.
+ * The Zone Info HUD uses configurable String Lists with placeholders like
+ * {location}, {mithril_powder}, {commissions}, etc. Each zone type has its
+ * own default layout that the user can customize.
  */
 public class FusionConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger("FusionConfig");
@@ -27,42 +27,76 @@ public class FusionConfig {
     private static final Path CONFIG_PATH = FabricLoader.getInstance()
             .getConfigDir().resolve("fusion_mod.json");
 
-    // ── Serializable config data ────────────────────────────────────────────
     private static ConfigData data = new ConfigData();
 
     /**
      * Holds all config fields. GSON-serialized to/from JSON.
      */
     public static class ConfigData {
-        // ── Crystal Hollows ──
+        // ══════════════════════════════════════════════════════════════════
+        // General Settings
+        // ══════════════════════════════════════════════════════════════════
+        public boolean zoneInfoHudEnabled = true;
+        public boolean drillFuelBarEnabled = true;
+        public boolean itemPickupLogEnabled = true;
+        public boolean itemTooltipsEnabled = true;
+        public boolean chatFilterEnabled = true;
+        public boolean partyCommandsEnabled = true;
+        public boolean experimentSolverEnabled = true;
+
+        // ══════════════════════════════════════════════════════════════════
+        // Dwarven Mines / Mining
+        // ══════════════════════════════════════════════════════════════════
+        public boolean commissionWaypointsEnabled = true;
+        public boolean waypointsEnabled = true;
+        public boolean pickobulusPreviewEnabled = true;  // 3D box in world
+
+        /** HUD layout for Dwarven Mines / Glacite Tunnels / Crystal Hollows */
+        public List<String> miningHudLayout = Arrays.asList(
+                "{location}",
+                "Mithril: {mithril_powder}",
+                "Gemstone: {gemstone_powder}",
+                "Glacite: {glacite_powder}",
+                "Pickobulus: {pickobulus}",
+                "",
+                "Commissions:",
+                "{commissions}"
+        );
+
+        // ══════════════════════════════════════════════════════════════════
+        // Crystal Hollows
+        // ══════════════════════════════════════════════════════════════════
         public boolean chestEspEnabled = true;
         public boolean crystalMapEnabled = true;
         public float crystalMapScale = 1.0f;
         public int crystalMapLocationSize = 8;
 
-        // ── 3D Waypoints ──
-        public boolean waypointsEnabled = true;
-        public boolean commissionWaypointsEnabled = true;
-
-        // ── HUD Widgets ──
-        public boolean commissionsHudEnabled = true;
-        public boolean drillFuelBarEnabled = true;
-        public boolean pickobulusTimerEnabled = true;
-        public boolean itemPickupLogEnabled = true;
-        public boolean hotmOverlayEnabled = false;  // Disabled by default — feedChat() not wired up yet
-
-        // ── Garden ──
+        // ══════════════════════════════════════════════════════════════════
+        // Garden
+        // ══════════════════════════════════════════════════════════════════
         public boolean gardenTrackerEnabled = true;
 
-        // ── Social ──
-        public boolean chatFilterEnabled = true;
-        public boolean partyCommandsEnabled = true;
+        /** HUD layout for Garden zone */
+        public List<String> gardenHudLayout = Arrays.asList(
+                "{location}",
+                "Pests: {pests_alive}",
+                "{pests_plots}",
+                "Spray: {pest_cooldown}",
+                "{visitors}",
+                "Jacob: {jacob_timer}",
+                "Greenhouse: {greenhouse_timer}"
+        );
 
-        // ── Economy ──
-        public boolean itemTooltipsEnabled = true;
+        // ══════════════════════════════════════════════════════════════════
+        // Default / Fallback (any other zone)
+        // ══════════════════════════════════════════════════════════════════
+        public List<String> defaultHudLayout = Arrays.asList(
+                "{location}"
+        );
 
-        // ── Progression ──
-        public boolean experimentSolverEnabled = true;
+        // Legacy fields kept for backward compatibility with old configs
+        public boolean commissionsHudEnabled = true;
+        public boolean hotmOverlayEnabled = false;
     }
 
     // ── Initialization ──────────────────────────────────────────────────────
@@ -77,50 +111,79 @@ public class FusionConfig {
         return new ConfigScreen(parent);
     }
 
-    // ── Getters ─────────────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════
+    // Getters
+    // ══════════════════════════════════════════════════════════════════════
 
+    // General
+    public static boolean isZoneInfoHudEnabled() { return data.zoneInfoHudEnabled; }
+    public static boolean isDrillFuelBarEnabled() { return data.drillFuelBarEnabled; }
+    public static boolean isItemPickupLogEnabled() { return data.itemPickupLogEnabled; }
+    public static boolean isItemTooltipsEnabled() { return data.itemTooltipsEnabled; }
+    public static boolean isChatFilterEnabled() { return data.chatFilterEnabled; }
+    public static boolean isPartyCommandsEnabled() { return data.partyCommandsEnabled; }
+    public static boolean isExperimentSolverEnabled() { return data.experimentSolverEnabled; }
+
+    // Dwarven Mines
+    public static boolean isCommissionWaypointsEnabled() { return data.commissionWaypointsEnabled; }
+    public static boolean isWaypointsEnabled() { return data.waypointsEnabled; }
+    public static boolean isPickobulusPreviewEnabled() { return data.pickobulusPreviewEnabled; }
+
+    // Crystal Hollows
     public static boolean isChestEspEnabled() { return data.chestEspEnabled; }
     public static boolean isCrystalMapEnabled() { return data.crystalMapEnabled; }
     public static float getCrystalMapScale() { return data.crystalMapScale; }
     public static int getCrystalMapLocationSize() { return data.crystalMapLocationSize; }
-    public static boolean isWaypointsEnabled() { return data.waypointsEnabled; }
-    public static boolean isCommissionWaypointsEnabled() { return data.commissionWaypointsEnabled; }
-    public static boolean isCommissionsEnabled() { return data.commissionsHudEnabled; }
-    public static boolean isDrillFuelBarEnabled() { return data.drillFuelBarEnabled; }
-    public static boolean isPickobulusTimerEnabled() { return data.pickobulusTimerEnabled; }
-    public static boolean isItemPickupLogEnabled() { return data.itemPickupLogEnabled; }
-    public static boolean isHotmOverlayEnabled() { return data.hotmOverlayEnabled; }
+
+    // Garden
     public static boolean isGardenTrackerEnabled() { return data.gardenTrackerEnabled; }
-    public static boolean isChatFilterEnabled() { return data.chatFilterEnabled; }
-    public static boolean isPartyCommandsEnabled() { return data.partyCommandsEnabled; }
-    public static boolean isItemTooltipsEnabled() { return data.itemTooltipsEnabled; }
-    public static boolean isExperimentSolverEnabled() { return data.experimentSolverEnabled; }
 
-    // ── Setters (auto-save) ─────────────────────────────────────────────────
+    // HUD Layouts
+    public static List<String> getMiningHudLayout() { return data.miningHudLayout; }
+    public static List<String> getGardenHudLayout() { return data.gardenHudLayout; }
+    public static List<String> getDefaultHudLayout() { return data.defaultHudLayout; }
 
+    // Legacy compat
+    public static boolean isCommissionsEnabled() { return data.zoneInfoHudEnabled; }
+    public static boolean isPickobulusTimerEnabled() { return data.pickobulusPreviewEnabled; }
+    public static boolean isHotmOverlayEnabled() { return data.hotmOverlayEnabled; }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Setters (auto-save)
+    // ══════════════════════════════════════════════════════════════════════
+
+    // General
+    public static void setZoneInfoHudEnabled(boolean v) { data.zoneInfoHudEnabled = v; save(); }
+    public static void setDrillFuelBarEnabled(boolean v) { data.drillFuelBarEnabled = v; save(); }
+    public static void setItemPickupLogEnabled(boolean v) { data.itemPickupLogEnabled = v; save(); }
+    public static void setItemTooltipsEnabled(boolean v) { data.itemTooltipsEnabled = v; save(); }
+    public static void setChatFilterEnabled(boolean v) { data.chatFilterEnabled = v; save(); }
+    public static void setPartyCommandsEnabled(boolean v) { data.partyCommandsEnabled = v; save(); }
+    public static void setExperimentSolverEnabled(boolean v) { data.experimentSolverEnabled = v; save(); }
+
+    // Dwarven Mines
+    public static void setCommissionWaypointsEnabled(boolean v) { data.commissionWaypointsEnabled = v; save(); }
+    public static void setWaypointsEnabled(boolean v) { data.waypointsEnabled = v; save(); }
+    public static void setPickobulusPreviewEnabled(boolean v) { data.pickobulusPreviewEnabled = v; save(); }
+
+    // Crystal Hollows
     public static void setChestEspEnabled(boolean v) { data.chestEspEnabled = v; save(); }
     public static void setCrystalMapEnabled(boolean v) { data.crystalMapEnabled = v; save(); }
     public static void setCrystalMapScale(float v) { data.crystalMapScale = v; save(); }
     public static void setCrystalMapLocationSize(int v) { data.crystalMapLocationSize = v; save(); }
-    public static void setWaypointsEnabled(boolean v) { data.waypointsEnabled = v; save(); }
-    public static void setCommissionWaypointsEnabled(boolean v) { data.commissionWaypointsEnabled = v; save(); }
-    public static void setCommissionsHudEnabled(boolean v) { data.commissionsHudEnabled = v; save(); }
-    public static void setDrillFuelBarEnabled(boolean v) { data.drillFuelBarEnabled = v; save(); }
-    public static void setPickobulusTimerEnabled(boolean v) { data.pickobulusTimerEnabled = v; save(); }
-    public static void setItemPickupLogEnabled(boolean v) { data.itemPickupLogEnabled = v; save(); }
-    public static void setHotmOverlayEnabled(boolean v) { data.hotmOverlayEnabled = v; save(); }
-    public static void setGardenTrackerEnabled(boolean v) { data.gardenTrackerEnabled = v; save(); }
-    public static void setChatFilterEnabled(boolean v) { data.chatFilterEnabled = v; save(); }
-    public static void setPartyCommandsEnabled(boolean v) { data.partyCommandsEnabled = v; save(); }
-    public static void setItemTooltipsEnabled(boolean v) { data.itemTooltipsEnabled = v; save(); }
-    public static void setExperimentSolverEnabled(boolean v) { data.experimentSolverEnabled = v; save(); }
 
-    // ── Direct data access (for ConfigScreen binding) ───────────────────────
+    // Garden
+    public static void setGardenTrackerEnabled(boolean v) { data.gardenTrackerEnabled = v; save(); }
+
+    // Legacy compat
+    public static void setCommissionsHudEnabled(boolean v) { data.zoneInfoHudEnabled = v; save(); }
+    public static void setHotmOverlayEnabled(boolean v) { data.hotmOverlayEnabled = v; save(); }
+
+    // ── Direct data access ──────────────────────────────────────────────────
 
     public static ConfigData getData() { return data; }
 
     // ── Persistence ─────────────────────────────────────────────────────────
-    // Adapted from Skyblocker's SkyblockerConfigManager and SkyHanni's ConfigManager
 
     public static void save() {
         try {
@@ -138,6 +201,10 @@ public class FusionConfig {
                 ConfigData loaded = GSON.fromJson(json, ConfigData.class);
                 if (loaded != null) {
                     data = loaded;
+                    // Ensure lists are never null (GSON may leave them null if missing from JSON)
+                    if (data.miningHudLayout == null) data.miningHudLayout = new ConfigData().miningHudLayout;
+                    if (data.gardenHudLayout == null) data.gardenHudLayout = new ConfigData().gardenHudLayout;
+                    if (data.defaultHudLayout == null) data.defaultHudLayout = new ConfigData().defaultHudLayout;
                 }
             }
         } catch (Exception e) {

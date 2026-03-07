@@ -61,8 +61,41 @@ public class ConfigScreen extends Screen {
     /**
      * Builds all categories and their toggle options.
      * Each toggle binds to a FusionConfig getter/setter.
+     *
+     * Categories match the FusionConfig field organization:
+     *   General Settings, Dwarven Mines, Crystal Hollows, Garden
      */
     private void buildCategories() {
+        // ── General Settings ──
+        List<ToggleOption> general = new ArrayList<>();
+        general.add(new ToggleOption("Zone Info HUD", "Dynamic HUD showing zone-relevant info (commissions, pests, etc.)",
+                FusionConfig::isZoneInfoHudEnabled, FusionConfig::setZoneInfoHudEnabled));
+        general.add(new ToggleOption("Drill Fuel Bar", "Show drill fuel as a bar overlay",
+                FusionConfig::isDrillFuelBarEnabled, FusionConfig::setDrillFuelBarEnabled));
+        general.add(new ToggleOption("Item Pickup Log", "Show recently picked up items",
+                FusionConfig::isItemPickupLogEnabled, FusionConfig::setItemPickupLogEnabled));
+        general.add(new ToggleOption("Item Price Tooltips", "Show NPC/Bazaar prices in item tooltips",
+                FusionConfig::isItemTooltipsEnabled, FusionConfig::setItemTooltipsEnabled));
+        general.add(new ToggleOption("Chat Filter", "Filter spam and unwanted chat messages",
+                FusionConfig::isChatFilterEnabled, FusionConfig::setChatFilterEnabled));
+        general.add(new ToggleOption("Party Commands", "Enable custom party chat commands",
+                FusionConfig::isPartyCommandsEnabled, FusionConfig::setPartyCommandsEnabled));
+        general.add(new ToggleOption("Experiment Solver", "Solve Experimentation Table puzzles",
+                FusionConfig::isExperimentSolverEnabled, FusionConfig::setExperimentSolverEnabled));
+        categories.put("General Settings", general);
+
+        // ── Dwarven Mines ──
+        List<ToggleOption> dwarven = new ArrayList<>();
+        dwarven.add(new ToggleOption("Commission Waypoints", "Auto-create 3D waypoints for active commissions",
+                FusionConfig::isCommissionWaypointsEnabled, FusionConfig::setCommissionWaypointsEnabled));
+        dwarven.add(new ToggleOption("3D Waypoints", "Enable 3D waypoint rendering in the world",
+                FusionConfig::isWaypointsEnabled, FusionConfig::setWaypointsEnabled));
+        dwarven.add(new ToggleOption("Pickobulus Preview", "Show 5x5x5 preview box when Pickobulus is ready",
+                FusionConfig::isPickobulusPreviewEnabled, FusionConfig::setPickobulusPreviewEnabled));
+        dwarven.add(new ToggleOption("HotM Overlay", "Show Sky Mall perk info",
+                FusionConfig::isHotmOverlayEnabled, FusionConfig::setHotmOverlayEnabled));
+        categories.put("Dwarven Mines", dwarven);
+
         // ── Crystal Hollows ──
         List<ToggleOption> hollows = new ArrayList<>();
         hollows.add(new ToggleOption("Chest ESP", "Highlight treasure chests in Crystal Hollows",
@@ -71,53 +104,11 @@ public class ConfigScreen extends Screen {
                 FusionConfig::isCrystalMapEnabled, FusionConfig::setCrystalMapEnabled));
         categories.put("Crystal Hollows", hollows);
 
-        // ── Waypoints ──
-        List<ToggleOption> waypoints = new ArrayList<>();
-        waypoints.add(new ToggleOption("3D Waypoints", "Enable 3D waypoint rendering in the world",
-                FusionConfig::isWaypointsEnabled, FusionConfig::setWaypointsEnabled));
-        waypoints.add(new ToggleOption("Commission Waypoints", "Auto-create waypoints for active commissions",
-                FusionConfig::isCommissionWaypointsEnabled, FusionConfig::setCommissionWaypointsEnabled));
-        categories.put("Waypoints", waypoints);
-
-        // ── HUD Widgets ──
-        List<ToggleOption> hud = new ArrayList<>();
-        hud.add(new ToggleOption("Commission Tracker", "Show active commissions on HUD",
-                FusionConfig::isCommissionsEnabled, v -> FusionConfig.setCommissionsHudEnabled(v)));
-        hud.add(new ToggleOption("Drill Fuel Bar", "Show drill fuel as a bar overlay",
-                FusionConfig::isDrillFuelBarEnabled, FusionConfig::setDrillFuelBarEnabled));
-        hud.add(new ToggleOption("Pickobulus Timer", "Show Pickobulus cooldown and status",
-                FusionConfig::isPickobulusTimerEnabled, FusionConfig::setPickobulusTimerEnabled));
-        hud.add(new ToggleOption("Item Pickup Log", "Show recently picked up items",
-                FusionConfig::isItemPickupLogEnabled, FusionConfig::setItemPickupLogEnabled));
-        hud.add(new ToggleOption("HotM Overlay", "Show Sky Mall perk info",
-                FusionConfig::isHotmOverlayEnabled, FusionConfig::setHotmOverlayEnabled));
-        categories.put("HUD Widgets", hud);
-
         // ── Garden ──
         List<ToggleOption> garden = new ArrayList<>();
-        garden.add(new ToggleOption("Garden Tracker", "Track garden visitors and stats",
+        garden.add(new ToggleOption("Garden Tracker", "Track garden pests, visitors, and Jacob timer",
                 FusionConfig::isGardenTrackerEnabled, FusionConfig::setGardenTrackerEnabled));
         categories.put("Garden", garden);
-
-        // ── Social ──
-        List<ToggleOption> social = new ArrayList<>();
-        social.add(new ToggleOption("Chat Filter", "Filter spam and unwanted chat messages",
-                FusionConfig::isChatFilterEnabled, FusionConfig::setChatFilterEnabled));
-        social.add(new ToggleOption("Party Commands", "Enable custom party chat commands",
-                FusionConfig::isPartyCommandsEnabled, FusionConfig::setPartyCommandsEnabled));
-        categories.put("Social", social);
-
-        // ── Economy ──
-        List<ToggleOption> economy = new ArrayList<>();
-        economy.add(new ToggleOption("Item Price Tooltips", "Show NPC/Bazaar prices in item tooltips",
-                FusionConfig::isItemTooltipsEnabled, FusionConfig::setItemTooltipsEnabled));
-        categories.put("Economy", economy);
-
-        // ── Progression ──
-        List<ToggleOption> progression = new ArrayList<>();
-        progression.add(new ToggleOption("Experiment Solver", "Solve Experimentation Table puzzles",
-                FusionConfig::isExperimentSolverEnabled, FusionConfig::setExperimentSolverEnabled));
-        categories.put("Progression", progression);
     }
 
     // ── Screen lifecycle ────────────────────────────────────────────────────
