@@ -3,7 +3,6 @@ package moi.fusion_mod.macros;
 import moi.fusion_mod.config.FusionConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -15,17 +14,16 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 /**
  * AutoMiner — automatically mines configured block types within range.
  * Ported from pasunhack AutoMiner.java (Yarn mappings → Mojang 1.21.10).
  *
- * Scans radius 5 around the player for configured blocks, picks closest by angle,
- * lerps camera toward target, validates via crosshair raycast, holds attack key.
+ * Uses a nested loop priority system: iterates through the autoMinerBlocks
+ * config list FIRST (outer loop), then does the 3D radius search (inner loop).
+ * A block higher in the config list is ALWAYS targeted first.
  *
  * Failsafes:
  *  - Movement detection (auto-disable if player moves > 0.005 sq dist)
@@ -93,23 +91,11 @@ public class AutoMiner {
         BlockPos playerPos = mc.player.blockPosition();
         Vec3 currentPos = new Vec3(mc.player.getX(), mc.player.getY(), mc.player.getZ());
 
-        // Iterate through requested blocks IN ORDER of priority
-        // The target block from config takes top priority
-        List<String> blockIds = new ArrayList<>();
-        String primaryBlock = FusionConfig.getAutoMinerTargetBlock();
-        if (primaryBlock != null && !primaryBlock.trim().isEmpty()) {
-            blockIds.add(primaryBlock.trim());
-        }
-        // Add the rest from the block list, skipping duplicates
-        for (String id : FusionConfig.getAutoMinerBlocks()) {
-            if (!blockIds.contains(id)) {
-                blockIds.add(id);
-            }
-        }
-        for (String id : blockIds) {
+        // Iterate through requested blocks IN ORDER of priority (outer loop)
+        for (String targetId : FusionConfig.getAutoMinerBlocks()) {
             Block targetBlock = null;
             try {
-                ResourceLocation resLoc = ResourceLocation.parse(id);
+                ResourceLocation resLoc = ResourceLocation.parse(targetId);
                 if (resLoc != null && BuiltInRegistries.BLOCK.containsKey(resLoc)) {
                     targetBlock = BuiltInRegistries.BLOCK.getValue(resLoc);
                 }
@@ -123,6 +109,7 @@ public class AutoMiner {
             BlockPos bestTarget = null;
             double minAngleDist = Double.MAX_VALUE;
 
+            // 3D radius search (inner loop)
             for (int x = -r; x <= r; x++) {
                 for (int y = -r; y <= r; y++) {
                     for (int z = -r; z <= r; z++) {

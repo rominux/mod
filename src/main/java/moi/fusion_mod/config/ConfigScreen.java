@@ -4,7 +4,10 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -52,8 +55,8 @@ public class ConfigScreen extends Screen {
         }
     }
 
-    // ── Active EditBox (for text input fields in the current category) ───
-    private EditBox targetBlockField = null;
+    // ── Auto-Miner priority list UI state ───────────────────────────────────
+    private EditBox addBlockField = null;
 
     public ConfigScreen(Screen parent) {
         super(Component.literal("Fusion Mod Configuration"));
@@ -65,9 +68,6 @@ public class ConfigScreen extends Screen {
     /**
      * Builds all categories and their toggle options.
      * Each toggle binds to a FusionConfig getter/setter.
-     *
-     * Categories match the FusionConfig field organization:
-     *   General Settings, Dwarven Mines, Crystal Hollows, Garden
      */
     private void buildCategories() {
         // ── General Settings ──
@@ -200,21 +200,96 @@ public class ConfigScreen extends Screen {
                 optionY += BUTTON_HEIGHT + OPTION_PADDING + 12; // extra space for description
             }
 
-            // ── Auto-Miner Target Block text field (Macros category only) ──
-            targetBlockField = null;
+            // ── Auto-Miner Priority List (Macros category only) ──────────
+            addBlockField = null;
             if ("Macros".equals(selectedCategory)) {
-                int fieldX = optionX;
-                int fieldW = optionW - 10;
-                int fieldY = optionY + 4;
+                optionY += 8; // extra spacing before the priority list section
 
-                targetBlockField = new EditBox(this.font, fieldX + 120, fieldY, fieldW - 120, BUTTON_HEIGHT,
-                        Component.literal("Target Block"));
-                targetBlockField.setMaxLength(128);
-                targetBlockField.setValue(FusionConfig.getAutoMinerTargetBlock());
-                targetBlockField.setResponder(value -> {
-                    FusionConfig.setAutoMinerTargetBlock(value.trim());
-                });
-                this.addRenderableWidget(targetBlockField);
+                List<String> blockList = FusionConfig.getAutoMinerBlocks();
+                int rowHeight = 22;
+                int smallBtnW = 20;
+                int removeBtnW = 20;
+                int iconSize = 16;
+                int btnSpacing = 2;
+
+                // Render a row for each block in the priority list
+                for (int i = 0; i < blockList.size(); i++) {
+                    final int index = i;
+                    int rowY = optionY + i * rowHeight;
+
+                    // "Up" button (disabled for first item)
+                    if (i > 0) {
+                        this.addRenderableWidget(Button.builder(
+                                Component.literal("\u2191"),
+                                button -> {
+                                    List<String> list = new ArrayList<>(FusionConfig.getAutoMinerBlocks());
+                                    if (index > 0 && index < list.size()) {
+                                        String item = list.remove(index);
+                                        list.add(index - 1, item);
+                                        FusionConfig.setAutoMinerBlocks(list);
+                                        this.init();
+                                    }
+                                }
+                        ).bounds(optionX + optionW - (smallBtnW * 3 + btnSpacing * 2 + removeBtnW), rowY, smallBtnW, rowHeight - 2).build());
+                    }
+
+                    // "Down" button (disabled for last item)
+                    if (i < blockList.size() - 1) {
+                        this.addRenderableWidget(Button.builder(
+                                Component.literal("\u2193"),
+                                button -> {
+                                    List<String> list = new ArrayList<>(FusionConfig.getAutoMinerBlocks());
+                                    if (index >= 0 && index < list.size() - 1) {
+                                        String item = list.remove(index);
+                                        list.add(index + 1, item);
+                                        FusionConfig.setAutoMinerBlocks(list);
+                                        this.init();
+                                    }
+                                }
+                        ).bounds(optionX + optionW - (smallBtnW * 2 + btnSpacing + removeBtnW), rowY, smallBtnW, rowHeight - 2).build());
+                    }
+
+                    // "-" remove button (red)
+                    this.addRenderableWidget(Button.builder(
+                            Component.literal("\u00A7c-"),
+                            button -> {
+                                List<String> list = new ArrayList<>(FusionConfig.getAutoMinerBlocks());
+                                if (index >= 0 && index < list.size()) {
+                                    list.remove(index);
+                                    FusionConfig.setAutoMinerBlocks(list);
+                                    this.init();
+                                }
+                            }
+                    ).bounds(optionX + optionW - removeBtnW, rowY, removeBtnW, rowHeight - 2).build());
+                }
+
+                // ── Add new block row at the bottom ──────────────────────
+                int addRowY = optionY + blockList.size() * rowHeight + 6;
+                int addBtnW = 24;
+                int fieldW = optionW - addBtnW - 8;
+
+                addBlockField = new EditBox(this.font, optionX, addRowY, fieldW, BUTTON_HEIGHT,
+                        Component.literal("Block ID"));
+                addBlockField.setMaxLength(128);
+                addBlockField.setHint(Component.literal("minecraft:block_id"));
+                this.addRenderableWidget(addBlockField);
+
+                this.addRenderableWidget(Button.builder(
+                        Component.literal("\u00A7a+"),
+                        button -> {
+                            if (addBlockField != null) {
+                                String value = addBlockField.getValue().trim();
+                                if (!value.isEmpty()) {
+                                    List<String> list = new ArrayList<>(FusionConfig.getAutoMinerBlocks());
+                                    if (!list.contains(value)) {
+                                        list.add(value);
+                                        FusionConfig.setAutoMinerBlocks(list);
+                                    }
+                                    this.init();
+                                }
+                            }
+                        }
+                ).bounds(optionX + fieldW + 4, addRowY, addBtnW, BUTTON_HEIGHT).build());
             }
         }
 
@@ -252,6 +327,8 @@ public class ConfigScreen extends Screen {
             // ── Draw option labels and descriptions ──
             List<ToggleOption> options = categories.get(selectedCategory);
             if (options != null) {
+                int optionX = SIDEBAR_WIDTH + OPTION_PADDING;
+                int optionW = screenW - SIDEBAR_WIDTH - 2 * OPTION_PADDING;
                 int optionY = HEADER_HEIGHT + OPTION_PADDING;
                 for (ToggleOption opt : options) {
                     // Option label (left of toggle button)
@@ -265,13 +342,43 @@ public class ConfigScreen extends Screen {
                     optionY += BUTTON_HEIGHT + OPTION_PADDING + 12;
                 }
 
-                // ── Target Block label (Macros category only) ──
-                if ("Macros".equals(selectedCategory) && targetBlockField != null) {
-                    int fieldLabelY = optionY + 4;
-                    graphics.drawString(this.font, "\u00A7fTarget Block:",
-                            SIDEBAR_WIDTH + OPTION_PADDING, fieldLabelY + 5, 0xFFFFFFFF);
-                    graphics.drawString(this.font, "\u00A77Block ID the Auto-Miner will prioritize (e.g. minecraft:mithril_ore)",
-                            SIDEBAR_WIDTH + OPTION_PADDING, fieldLabelY + BUTTON_HEIGHT + 2, 0xFFAAAAAA);
+                // ── Auto-Miner Priority List rendering (Macros category) ──
+                if ("Macros".equals(selectedCategory)) {
+                    optionY += 8;
+
+                    // Section header
+                    graphics.drawString(this.font, "\u00A7e\u00A7lAuto-Miner Block Priority:",
+                            optionX, optionY - 14, 0xFFFFFFFF);
+                    graphics.drawString(this.font, "\u00A77Higher = mined first. Drag with arrows to reorder.",
+                            optionX, optionY - 4, 0xFFAAAAAA);
+
+                    List<String> blockList = FusionConfig.getAutoMinerBlocks();
+                    int rowHeight = 22;
+                    int iconSize = 16;
+
+                    for (int i = 0; i < blockList.size(); i++) {
+                        String blockId = blockList.get(i);
+                        int rowY = optionY + i * rowHeight;
+
+                        // Priority number
+                        graphics.drawString(this.font, "\u00A76" + (i + 1) + ".",
+                                optionX, rowY + 4, 0xFFFFAA00);
+
+                        // Block icon (render item)
+                        ItemStack iconStack = getItemStackForBlockId(blockId);
+                        if (!iconStack.isEmpty()) {
+                            graphics.renderItem(iconStack, optionX + 16, rowY + 1);
+                        }
+
+                        // Block ID text
+                        graphics.drawString(this.font, "\u00A7f" + blockId,
+                                optionX + 36, rowY + 4, 0xFFFFFFFF);
+                    }
+
+                    // "Add block" label below the list
+                    int addRowY = optionY + blockList.size() * rowHeight + 6;
+                    graphics.drawString(this.font, "\u00A77Add block:",
+                            optionX, addRowY - 12, 0xFFAAAAAA);
                 }
             }
         }
@@ -287,6 +394,21 @@ public class ConfigScreen extends Screen {
 
         // Render vanilla widgets (buttons) on top
         super.render(graphics, mouseX, mouseY, delta);
+    }
+
+    /**
+     * Parse a block ID string to an ItemStack for icon rendering.
+     */
+    private static ItemStack getItemStackForBlockId(String blockId) {
+        try {
+            ResourceLocation resLoc = ResourceLocation.parse(blockId);
+            if (BuiltInRegistries.BLOCK.containsKey(resLoc)) {
+                return new ItemStack(BuiltInRegistries.BLOCK.getValue(resLoc));
+            }
+        } catch (Throwable t) {
+            // Invalid ID — return empty
+        }
+        return ItemStack.EMPTY;
     }
 
     @Override

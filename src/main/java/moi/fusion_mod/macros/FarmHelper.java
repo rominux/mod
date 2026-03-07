@@ -235,7 +235,7 @@ public class FarmHelper {
             double dz = targetZ - playerZ;
             double dist2D = Math.sqrt(dx * dx + dz * dz);
 
-            boolean reached = dist2D <= 0.6 || (dist2D <= 2.0 && stuckTicks >= 2);
+            boolean reached = dist2D <= 0.6 || (dist2D <= 2.0 && stuckTicks >= 15);
 
             if (reached) {
                 // Release all movement keys briefly on waypoint transition
