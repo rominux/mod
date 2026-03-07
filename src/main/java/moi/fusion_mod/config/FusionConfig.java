@@ -49,7 +49,7 @@ public class FusionConfig {
         public boolean drillFuelBarEnabled = true;
         public boolean pickobulusTimerEnabled = true;
         public boolean itemPickupLogEnabled = true;
-        public boolean hotmOverlayEnabled = true;
+        public boolean hotmOverlayEnabled = false;  // Disabled by default — feedChat() not wired up yet
 
         // ── Garden ──
         public boolean gardenTrackerEnabled = true;

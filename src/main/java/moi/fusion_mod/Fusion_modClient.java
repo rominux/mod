@@ -5,6 +5,7 @@ import moi.fusion_mod.economy.ItemTooltipListener;
 import moi.fusion_mod.economy.PriceDataManager;
 import moi.fusion_mod.hollows.ChestEspRenderer;
 import moi.fusion_mod.hollows.CrystalHollowsMapHud;
+import moi.fusion_mod.ui.hud.ItemPickupLogHud;
 import moi.fusion_mod.ui.layout.JarvisGuiManager;
 import moi.fusion_mod.waypoints.WaypointRenderer;
 import net.fabricmc.api.ClientModInitializer;
@@ -21,7 +22,6 @@ public class Fusion_modClient implements ClientModInitializer {
     public static KeyMapping configKeybind;
 
     // Tick counter for periodic tasks (Crystal Hollows map discovery runs every 40 ticks)
-    // Interval extracted from CrystalsLocationsManager: Scheduler.scheduleCyclic(update, 40)
     private int tickCounter = 0;
 
     @Override
@@ -55,9 +55,14 @@ public class Fusion_modClient implements ClientModInitializer {
             tickCounter++;
 
             // Crystal Hollows map zone discovery (every 40 ticks = 2 seconds)
-            // Interval from CrystalsLocationsManager: Scheduler.scheduleCyclic(update, 40)
             if (tickCounter % 40 == 0) {
                 CrystalHollowsMapHud.tick();
+            }
+
+            // Item Pickup Log — detect inventory changes every tick
+            ItemPickupLogHud pickupLog = ItemPickupLogHud.getInstance();
+            if (pickupLog != null) {
+                pickupLog.tick();
             }
         });
 
@@ -65,13 +70,14 @@ public class Fusion_modClient implements ClientModInitializer {
         ItemTooltipCallback.EVENT.register(new ItemTooltipListener());
 
         // ── World rendering (3D overlays) ───────────────────────────────
+        // Using END_MAIN same as pasunhack (WorldRenderEvents.END_MAIN)
         WorldRenderEvents.AFTER_ENTITIES.register(context -> {
             // Chest ESP
             if (FusionConfig.isChestEspEnabled()) {
                 ChestEspRenderer.render(context);
             }
 
-            // 3D Waypoints (commissions, crystal hollows, custom)
+            // 3D Waypoints + Pickobulus preview
             WaypointRenderer.render(context);
         });
     }

@@ -16,14 +16,8 @@ import java.util.function.Consumer;
  * Configuration screen for Fusion Mod.
  * Opens when the user presses the "G" keybind.
  *
- * Layout inspired by:
- *   - doc/SkyHanni/.../config/ConfigGuiManager.kt  (MoulConfigEditor with left panel categories + right panel options)
- *   - doc/Skyblocker/.../config/HudConfigScreen.java  (vanilla-based Screen with GridLayout, Button)
- *   - doc/Skyblocker/.../chat/ChatRuleConfigScreen.java  (vanilla-based with CycleButton for toggles)
- *   - doc/jarvis/.../impl/JarvisConfigSearch.java  (vanilla Screen with scrollable option list)
- *
- * This is a fully vanilla-based config screen (no YACL, no Cloth Config, no MoulConfig).
- * Uses a left sidebar for categories and a right panel for toggle options.
+ * Follows the exact same pattern as PasunhackGui: all widget creation in init(),
+ * using Button.builder().dimensions().build() and addRenderableWidget().
  */
 public class ConfigScreen extends Screen {
     private final Screen parent;
@@ -39,7 +33,6 @@ public class ConfigScreen extends Screen {
     // ── Category definitions ────────────────────────────────────────────────
     private final Map<String, List<ToggleOption>> categories = new LinkedHashMap<>();
     private String selectedCategory;
-    private int scrollOffset = 0;
 
     /**
      * A single toggle option.
@@ -131,14 +124,8 @@ public class ConfigScreen extends Screen {
 
     @Override
     protected void init() {
-        super.init();
-        // rebuildWidgets() is called by super.init() already
-    }
-
-    @Override
-    protected void rebuildWidgets() {
-        clearWidgets();
-        scrollOffset = 0;
+        // Clear all existing widgets (important when re-entering or switching categories)
+        this.clearWidgets();
 
         int screenW = this.width;
         int screenH = this.height;
@@ -148,48 +135,46 @@ public class ConfigScreen extends Screen {
         for (String categoryName : categories.keySet()) {
             final String cat = categoryName;
             int btnWidth = SIDEBAR_WIDTH - 2 * SIDEBAR_PADDING;
-            Button catButton = Button.builder(
+
+            this.addRenderableWidget(Button.builder(
                     Component.literal(categoryName),
                     button -> {
                         selectedCategory = cat;
-                        scrollOffset = 0;
-                        rebuildWidgets();
+                        this.init(); // Rebuild all widgets for new category
                     }
-            ).bounds(SIDEBAR_PADDING, catY, btnWidth, CATEGORY_BUTTON_HEIGHT).build();
+            ).bounds(SIDEBAR_PADDING, catY, btnWidth, CATEGORY_BUTTON_HEIGHT).build());
 
-            addRenderableWidget(catButton);
             catY += CATEGORY_BUTTON_HEIGHT + 2;
         }
 
         // ── Option toggle buttons for selected category ─────────────────
         List<ToggleOption> options = categories.get(selectedCategory);
-        if (options == null) return;
+        if (options != null) {
+            int optionX = SIDEBAR_WIDTH + OPTION_PADDING;
+            int optionW = screenW - SIDEBAR_WIDTH - 2 * OPTION_PADDING;
+            int toggleW = 40;
+            int optionY = HEADER_HEIGHT + OPTION_PADDING;
 
-        int optionX = SIDEBAR_WIDTH + OPTION_PADDING;
-        int optionW = screenW - SIDEBAR_WIDTH - 2 * OPTION_PADDING;
-        int toggleW = 40;
-        int optionY = HEADER_HEIGHT + OPTION_PADDING;
+            for (ToggleOption opt : options) {
+                boolean currentValue = opt.getter.getAsBoolean();
+                final ToggleOption option = opt;
 
-        for (ToggleOption opt : options) {
-            boolean currentValue = opt.getter.getAsBoolean();
-            final ToggleOption option = opt;
+                this.addRenderableWidget(Button.builder(
+                        Component.literal(currentValue ? "\u00A7aON" : "\u00A7cOFF"),
+                        button -> {
+                            boolean newValue = !option.getter.getAsBoolean();
+                            option.setter.accept(newValue);
+                            button.setMessage(Component.literal(newValue ? "\u00A7aON" : "\u00A7cOFF"));
+                        }
+                ).bounds(optionX + optionW - toggleW, optionY, toggleW, BUTTON_HEIGHT).build());
 
-            Button toggleButton = Button.builder(
-                    Component.literal(currentValue ? "\u00A7aON" : "\u00A7cOFF"),
-                    button -> {
-                        boolean newValue = !option.getter.getAsBoolean();
-                        option.setter.accept(newValue);
-                        button.setMessage(Component.literal(newValue ? "\u00A7aON" : "\u00A7cOFF"));
-                    }
-            ).bounds(optionX + optionW - toggleW, optionY, toggleW, BUTTON_HEIGHT).build();
-
-            addRenderableWidget(toggleButton);
-            optionY += BUTTON_HEIGHT + OPTION_PADDING + 12; // extra space for description
+                optionY += BUTTON_HEIGHT + OPTION_PADDING + 12; // extra space for description
+            }
         }
 
         // ── Done button at bottom ───────────────────────────────────────
         int doneW = 120;
-        addRenderableWidget(Button.builder(
+        this.addRenderableWidget(Button.builder(
                 Component.literal("Done"),
                 button -> onClose()
         ).bounds((screenW - doneW) / 2, screenH - 28, doneW, 20).build());
@@ -199,9 +184,8 @@ public class ConfigScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-        // In 1.21.10, super.render() already calls renderBackground() internally,
-        // which applies a blur effect. Calling renderBackground() here too causes
-        // "Can only blur once per frame" crash. So we skip the explicit call.
+        // In 1.21.10, super.render() already calls renderBackground() internally.
+        // Calling renderBackground() here too causes "Can only blur once per frame" crash.
 
         int screenW = this.width;
 
