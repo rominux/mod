@@ -25,7 +25,11 @@ public class ItemPickupLogHud implements JarvisGuiManager.JarvisHud {
     /** Static instance for external tick() calls */
     private static ItemPickupLogHud INSTANCE;
 
-    private final Vector2i position = new Vector2i(4, 60);
+    /**
+     * Default position: bottom-left, above chat area.
+     * Y is set dynamically in render() based on screen height.
+     */
+    private final Vector2i position = new Vector2i(4, 0);
 
     /** Entries currently displayed, newest first. Max 8 entries. */
     private final List<PickupEntry> entries = new ArrayList<>();
@@ -40,7 +44,7 @@ public class ItemPickupLogHud implements JarvisGuiManager.JarvisHud {
     private static final int MAX_ENTRIES = 8;
 
     /** Cooldown to avoid detecting initial inventory load as pickups */
-    private int initCooldown = 20;  // Skip first 20 ticks after joining
+    private int initCooldown = 40;  // Skip first 40 ticks (2 seconds) after joining
 
     private static class PickupEntry {
         final String itemName;
@@ -95,7 +99,7 @@ public class ItemPickupLogHud implements JarvisGuiManager.JarvisHud {
 
         if (player == null || player.getInventory() == null) {
             previousInventory = null;
-            initCooldown = 20;
+            initCooldown = 40;
             return;
         }
 
@@ -138,7 +142,18 @@ public class ItemPickupLogHud implements JarvisGuiManager.JarvisHud {
      */
     public void reset() {
         previousInventory = null;
-        initCooldown = 20;
+        initCooldown = 40;  // 2 seconds grace period
+        entries.clear();    // Clear display to prevent stale entries
+    }
+
+    /**
+     * Called on server/island change to prevent inventory diff spam.
+     * Clears the snapshot and adds a longer grace period.
+     */
+    public void resetOnWorldChange() {
+        previousInventory = null;
+        initCooldown = 60;  // 3 seconds grace period on world change
+        entries.clear();
     }
 
     private void addGain(String itemName, int amount) {
@@ -172,10 +187,15 @@ public class ItemPickupLogHud implements JarvisGuiManager.JarvisHud {
         Minecraft mc = Minecraft.getInstance();
         if (mc.font == null || entries.isEmpty()) return;
 
-        int y = offsetY;
+        // Position from bottom-left, above the chat area (~48px from bottom)
+        int screenHeight = mc.getWindow().getGuiScaledHeight();
+        int totalHeight = entries.size() * 11 + 4;
+        int startY = screenHeight - 48 - totalHeight;
+
+        int x = offsetX;
+        int y = startY;
 
         // Background box (semi-transparent)
-        int height = entries.size() * 11 + 4;
         int maxWidth = 0;
         for (PickupEntry entry : entries) {
             String text = "\u00A7a+ " + entry.amount + "x \u00A7f" + entry.itemName;
@@ -184,7 +204,7 @@ public class ItemPickupLogHud implements JarvisGuiManager.JarvisHud {
         }
         maxWidth += 6; // padding
 
-        graphics.fill(offsetX - 2, offsetY - 2, offsetX + maxWidth, offsetY + height, 0x80000000);
+        graphics.fill(x - 2, startY - 2, x + maxWidth, startY + totalHeight, 0x80000000);
 
         for (PickupEntry entry : entries) {
             // Fade out in the last 20 ticks
@@ -194,7 +214,7 @@ public class ItemPickupLogHud implements JarvisGuiManager.JarvisHud {
 
             int color = (alphaInt << 24) | 0xFFFFFF;
             String text = "\u00A7a+ " + entry.amount + "x \u00A7f" + entry.itemName;
-            graphics.drawString(mc.font, Component.literal(text), offsetX, y, color);
+            graphics.drawString(mc.font, Component.literal(text), x, y, color);
             y += 11;
         }
     }

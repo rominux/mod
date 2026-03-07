@@ -106,8 +106,18 @@ public class ConfigScreen extends Screen {
 
         // ── Garden ──
         List<ToggleOption> garden = new ArrayList<>();
-        garden.add(new ToggleOption("Garden Tracker", "Track garden pests, visitors, and Jacob timer",
+        garden.add(new ToggleOption("Garden Tracker", "Master toggle for garden zone HUD features",
                 FusionConfig::isGardenTrackerEnabled, FusionConfig::setGardenTrackerEnabled));
+        garden.add(new ToggleOption("Show Visitors", "Show visitor count and next visitor timer",
+                FusionConfig::isGardenShowVisitors, FusionConfig::setGardenShowVisitors));
+        garden.add(new ToggleOption("Show Pests", "Show pest count and infested plots",
+                FusionConfig::isGardenShowPests, FusionConfig::setGardenShowPests));
+        garden.add(new ToggleOption("Show Spray", "Show current spray info on your plot",
+                FusionConfig::isGardenShowSpray, FusionConfig::setGardenShowSpray));
+        garden.add(new ToggleOption("Show Greenhouse", "Show greenhouse growth cycle timer",
+                FusionConfig::isGardenShowGreenhouse, FusionConfig::setGardenShowGreenhouse));
+        garden.add(new ToggleOption("Show Jacob Contest", "Show Jacob's Contest timer and status",
+                FusionConfig::isGardenShowJacobContest, FusionConfig::setGardenShowJacobContest));
         categories.put("Garden", garden);
     }
 

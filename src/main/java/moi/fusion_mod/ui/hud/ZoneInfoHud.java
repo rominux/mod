@@ -13,9 +13,21 @@ import net.minecraft.world.scores.PlayerScoreEntry;
 import net.minecraft.world.scores.Scoreboard;
 import org.joml.Vector2i;
 import org.joml.Vector2ic;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,14 +35,17 @@ import java.util.regex.Pattern;
  * Universal zone-aware HUD that replaces the old CommissionHud.
  *
  * Reads a layout template (List of Strings with {placeholders}) from FusionConfig
- * based on the detected zone (mining, garden, or fallback). Resolves each placeholder
- * by parsing the tab list, scoreboard, and action bar. Lines where all placeholders
- * resolve to empty are dynamically skipped.
+ * based on the detected zone (mining, garden, hub, or fallback). Resolves each
+ * placeholder by parsing the tab list, scoreboard, tab footer, chat messages,
+ * and the Hypixel API. Lines where all placeholders resolve to empty are
+ * dynamically skipped.
  *
  * Preserves the static fields used by WaypointRenderer for commission waypoints
  * and pickobulus availability.
  */
 public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("ZoneInfoHud");
 
     private final Vector2i position = new Vector2i(10, 10);
 
@@ -55,28 +70,81 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
     // Garden data
     private int pestsAlive = 0;
     private String pestsPlots = "";
-    private String sprayCooldown = "";
-    private String visitorsInfo = "";
+    private String sprayInfo = "";
+    private int visitorCount = 0;
+    private String visitorTimer = "";
     private String jacobTimer = "";
     private String greenhouseTimer = "";
 
+    // Hub data
+    private String slayerQuest = "";
+    private String cookieBuff = "";
+    private String godPotion = "";
+
+    // ── Skymall (persisted across frames, set from chat listener) ───────
+    private static volatile String skymallPerk = "";
+
+    // ── Mayor/Minister (from Hypixel API, cached) ───────────────────────
+    private static volatile String mayorName = "";
+    private static volatile String ministerName = "";
+    private static final ScheduledExecutorService MAYOR_EXECUTOR =
+            Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "FusionMod-MayorFetch");
+                t.setDaemon(true);
+                return t;
+            });
+    private static boolean mayorFetchScheduled = false;
+
+    // ── Greenhouse timer (persisted, set from inventory event) ──────────
+    private static volatile long greenhouseTargetMillis = 0;
+
     // ── Zone detection ──────────────────────────────────────────────────
-    private enum Zone { MINING, GARDEN, OTHER }
+    private enum Zone { MINING, GARDEN, HUB, OTHER }
     private Zone currentZone = Zone.OTHER;
 
-    // ── Patterns for scoreboard pest detection ──────────────────────────
-    // SkyHanni: " §7⏣ §[ac]The Garden §4§lൠ§7 x<count>"
+    // ── Patterns ────────────────────────────────────────────────────────
+
+    // Scoreboard pest detection (SkyHanni)
     private static final Pattern PEST_SCOREBOARD_PATTERN =
             Pattern.compile(".*The Garden.*ൠ.*x(\\d+)");
-    // Plot-level pest pattern (stripped): "Plot - <name> ൠ x<count>"
     private static final Pattern PEST_PLOT_SCOREBOARD_PATTERN =
             Pattern.compile(".*Plot.*ൠ.*x(\\d+)");
-    // Tab list infested plots: " Plots: 4, 12, 13, 18, 20"
+
+    // Tab list garden patterns
     private static final Pattern INFESTED_PLOTS_PATTERN =
             Pattern.compile("\\s*Plots:\\s*(.+)");
-    // Tab list spray: "Sprays: ..." or action bar spray timer
     private static final Pattern SPRAY_PATTERN =
             Pattern.compile("\\s*Spray:\\s*(.+)");
+
+    // Slayer quest from scoreboard (SkyblockAddons)
+    private static final Pattern SLAYER_TYPE_PATTERN =
+            Pattern.compile("(?<type>Tarantula Broodfather|Revenant Horror|Sven Packmaster|Voidgloom Seraph|Inferno Demonlord|Riftstalker Bloodfiend) (?<level>[IV]+)");
+    private static final Pattern SLAYER_PROGRESS_PATTERN =
+            Pattern.compile("(?<progress>[0-9.k]*)/(?<total>[0-9.k]*) (?:Kills|Combat XP)$");
+
+    // Tab footer patterns (Skyblocker / SkyHanni)
+    // Cookie Buff from footer: "Cookie Buff\n<status>"
+    private static final Pattern COOKIE_FOOTER_PATTERN =
+            Pattern.compile("Cookie Buff\\n(.+?)\\n", Pattern.DOTALL);
+    // God Potion from footer: "You have a God Potion active! <timer>"
+    private static final Pattern GOD_POTION_FOOTER_PATTERN =
+            Pattern.compile("You have a God Potion active! ([\\w ]+)");
+    // God Potion from tab widget: "God Potion: <time>"
+    private static final Pattern GOD_POTION_TAB_PATTERN =
+            Pattern.compile("God Potion:\\s*([dhms0-9 ]+)");
+
+    // Skymall chat pattern (SkyHanni HotxPatterns)
+    // Matches "New buff: <perk description>" chat messages
+    private static final Pattern SKYMALL_CHAT_PATTERN =
+            Pattern.compile("New buff: (.+)");
+
+    // Visitor header pattern: "Visitors (3)" or "Visitors: (3)"
+    private static final Pattern VISITOR_COUNT_PATTERN =
+            Pattern.compile("Visitors.*\\((\\d+)\\)");
+
+    // Next visitor timer from tab list: "Next Visitor: 2m 30s" or similar
+    private static final Pattern NEXT_VISITOR_PATTERN =
+            Pattern.compile("Next Visitor:\\s*(.+)");
 
     /**
      * A single rendered line with color.
@@ -147,14 +215,107 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
     }
 
     // ══════════════════════════════════════════════════════════════════════
+    // STATIC API — Called from Fusion_modClient
+    // ══════════════════════════════════════════════════════════════════════
+
+    /**
+     * Called from chat event listener when a Skymall "New buff" message is received.
+     * Pattern (stripped): "New buff: <perk description>"
+     */
+    public static void onSkymallChat(String strippedMessage) {
+        Matcher m = SKYMALL_CHAT_PATTERN.matcher(strippedMessage);
+        if (m.find()) {
+            skymallPerk = m.group(1).trim();
+        }
+    }
+
+    /**
+     * Called from chat event listener with the raw (formatted) message for Skymall.
+     * SkyHanni pattern: "(?:§eNew buff§r§r§r: §r§f|§8 ■ §7)(?<perk>.*)"
+     */
+    public static void onSkymallChatFormatted(String formattedMessage) {
+        // Try the formatted pattern first
+        if (formattedMessage.contains("New buff")) {
+            // Extract perk from after "New buff" (various formatting)
+            String stripped = formattedMessage.replaceAll("\u00A7.", "").trim();
+            Matcher m = SKYMALL_CHAT_PATTERN.matcher(stripped);
+            if (m.find()) {
+                skymallPerk = m.group(1).trim();
+                // Remove trailing period if present
+                if (skymallPerk.endsWith(".")) {
+                    skymallPerk = skymallPerk.substring(0, skymallPerk.length() - 1).trim();
+                }
+            }
+        }
+    }
+
+    /**
+     * Reset Skymall perk (e.g., on world change, the perk resets on new day).
+     */
+    public static void resetSkymall() {
+        skymallPerk = "";
+    }
+
+    /**
+     * Set the greenhouse target time (epoch millis). Called when the user
+     * opens Crop Diagnostics inventory and we parse slot 20 lore.
+     */
+    public static void setGreenhouseTarget(long targetMillis) {
+        greenhouseTargetMillis = targetMillis;
+    }
+
+    /**
+     * Schedule mayor/minister fetch from Hypixel API.
+     * Called once on mod init. Refreshes every 10 minutes.
+     */
+    public static void scheduleMayorFetch() {
+        if (mayorFetchScheduled) return;
+        mayorFetchScheduled = true;
+        MAYOR_EXECUTOR.scheduleAtFixedRate(ZoneInfoHud::fetchMayorData, 0, 10, TimeUnit.MINUTES);
+    }
+
+    private static void fetchMayorData() {
+        try {
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(java.time.Duration.ofSeconds(5))
+                    .build();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.hypixel.net/v2/resources/skyblock/election"))
+                    .timeout(java.time.Duration.ofSeconds(10))
+                    .GET()
+                    .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() == 200) {
+                JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+                if (json.has("success") && json.get("success").getAsBoolean()) {
+                    JsonObject mayor = json.getAsJsonObject("mayor");
+                    if (mayor != null && mayor.has("name")) {
+                        mayorName = mayor.get("name").getAsString();
+
+                        // Minister data
+                        if (mayor.has("minister") && mayor.getAsJsonObject("minister").has("name")) {
+                            ministerName = mayor.getAsJsonObject("minister").get("name").getAsString();
+                        } else {
+                            ministerName = "";
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warn("[FusionMod] Failed to fetch mayor data from Hypixel API", e);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
     // DATA PARSING
     // ══════════════════════════════════════════════════════════════════════
 
     /**
-     * Parse all data sources: tab list (mining + garden), scoreboard (pests).
+     * Parse all data sources: tab list, scoreboard, tab footer.
      */
     private void parseAllData(Minecraft mc) {
-        // Reset all parsed fields
+        // Reset per-frame parsed fields
         areaName = "";
         mithrilPowder = "";
         gemstonePowder = "";
@@ -164,20 +325,27 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
         hasCompletedCommission = false;
         pestsAlive = 0;
         pestsPlots = "";
-        sprayCooldown = "";
-        visitorsInfo = "";
+        sprayInfo = "";
+        visitorCount = 0;
+        visitorTimer = "";
         jacobTimer = "";
-        greenhouseTimer = "";
+        slayerQuest = "";
+        cookieBuff = "";
+        godPotion = "";
+
+        // Greenhouse timer is persistent — compute from stored target
+        greenhouseTimer = resolveGreenhouseTimer();
 
         parseTabList(mc);
         parseScoreboard(mc);
+        parseTabFooter(mc);
         detectZone();
         generateWaypoints();
     }
 
     /**
      * Parse tab list for all data: area, powders, pickobulus, commissions,
-     * garden visitors, jacob timer, infested plots, spray.
+     * garden visitors (count only), jacob timer, infested plots, spray.
      */
     private void parseTabList(Minecraft mc) {
         boolean foundCommissions = false;
@@ -197,7 +365,6 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
             }
         }
 
-        List<String> visitorNames = new ArrayList<>();
         List<String> jacobLines = new ArrayList<>();
 
         for (String string : rawLines) {
@@ -230,16 +397,28 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
                 }
             }
 
+            // ── God Potion from tab widget ──────────────────────────
+            Matcher godPotTabMatcher = GOD_POTION_TAB_PATTERN.matcher(stripped);
+            if (godPotTabMatcher.find()) {
+                godPotion = godPotTabMatcher.group(1).trim();
+            }
+
+            // ── Next Visitor timer ──────────────────────────────────
+            Matcher nextVisitorMatcher = NEXT_VISITOR_PATTERN.matcher(stripped);
+            if (nextVisitorMatcher.find()) {
+                visitorTimer = nextVisitorMatcher.group(1).trim();
+            }
+
             // ── Infested Plots (Garden) ─────────────────────────────
             Matcher plotsMatcher = INFESTED_PLOTS_PATTERN.matcher(stripped);
             if (plotsMatcher.matches()) {
                 pestsPlots = "Plots: " + plotsMatcher.group(1).trim();
             }
 
-            // ── Spray cooldown ──────────────────────────────────────
+            // ── Spray info ─────────────────────────────────────────
             Matcher sprayMatcher = SPRAY_PATTERN.matcher(stripped);
             if (sprayMatcher.matches()) {
-                sprayCooldown = sprayMatcher.group(1).trim();
+                sprayInfo = sprayMatcher.group(1).trim();
             }
 
             // ── Commissions section ─────────────────────────────────
@@ -250,14 +429,17 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
                 continue;
             }
 
-            // ── Visitors section (Garden) ───────────────────────────
+            // ── Visitors section (Garden) — count only ──────────────
             if (stripped.startsWith("Visitors")) {
                 foundVisitors = true;
                 foundCommissions = false;
                 foundJacob = false;
-                // Extract count from "Visitors (3):" pattern
-                if (stripped.contains("(") && stripped.contains(")")) {
-                    // Already have the header, visitors will be listed below
+                // Extract count from "Visitors (3):" or "Visitors (3)"
+                Matcher vcMatcher = VISITOR_COUNT_PATTERN.matcher(stripped);
+                if (vcMatcher.find()) {
+                    try {
+                        visitorCount = Integer.parseInt(vcMatcher.group(1));
+                    } catch (NumberFormatException ignored) {}
                 }
                 continue;
             }
@@ -281,6 +463,12 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
                     // Check if this line starts a new section
                     if (stripped.startsWith("Visitors")) {
                         foundVisitors = true;
+                        Matcher vcMatcher = VISITOR_COUNT_PATTERN.matcher(stripped);
+                        if (vcMatcher.find()) {
+                            try {
+                                visitorCount = Integer.parseInt(vcMatcher.group(1));
+                            } catch (NumberFormatException ignored) {}
+                        }
                         continue;
                     }
                     if (stripped.contains("Jacob") && stripped.contains("Contest")) {
@@ -304,7 +492,7 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
                 }
             }
 
-            // ── Parse visitor lines ─────────────────────────────────
+            // ── Skip visitor names (we only want the count) ─────────
             if (foundVisitors) {
                 if (stripped.isEmpty() || stripped.endsWith(":")
                         || stripped.startsWith("Skills") || stripped.startsWith("Events")
@@ -318,8 +506,10 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
                     }
                     continue;
                 }
-                if (!stripped.isEmpty()) {
-                    visitorNames.add(stripped);
+                // Don't collect visitor names — we only show the count
+                // But check for "Queue Full!" in the visitor lines
+                if (stripped.equalsIgnoreCase("Queue Full!") || stripped.contains("Queue Full")) {
+                    visitorTimer = "Queue Full";
                 }
             }
 
@@ -338,11 +528,6 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
             }
         }
 
-        // Build visitor info string
-        if (!visitorNames.isEmpty()) {
-            visitorsInfo = "Visitors (" + visitorNames.size() + "): " + String.join(", ", visitorNames);
-        }
-
         // Build jacob timer string
         if (!jacobLines.isEmpty()) {
             jacobTimer = String.join(" | ", jacobLines);
@@ -350,8 +535,7 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
     }
 
     /**
-     * Parse scoreboard for pest count (Garden).
-     * SkyHanni pattern: scoreboard line containing "The Garden" + "ൠ" + "x<count>"
+     * Parse scoreboard for pest count (Garden) and slayer quest (Hub).
      */
     private void parseScoreboard(Minecraft mc) {
         if (mc.level == null) return;
@@ -361,6 +545,9 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
         if (sidebar == null) return;
 
         Collection<PlayerScoreEntry> scores = scoreboard.listPlayerScores(sidebar);
+        String slayerType = "";
+        String slayerProgress = "";
+
         for (PlayerScoreEntry entry : scores) {
             // Get the display text for this scoreboard line
             String line = "";
@@ -371,7 +558,7 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
             }
             String stripped = line.replaceAll("\u00A7.", "").trim();
 
-            // Check for pest patterns
+            // ── Pest patterns (Garden) ──────────────────────────────
             Matcher pestMatcher = PEST_SCOREBOARD_PATTERN.matcher(stripped);
             if (pestMatcher.matches()) {
                 try {
@@ -386,6 +573,94 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
                     pestsAlive += Integer.parseInt(plotPestMatcher.group(1));
                 } catch (NumberFormatException ignored) {}
             }
+
+            // ── Slayer quest (Hub/any) ──────────────────────────────
+            Matcher slayerTypeMatcher = SLAYER_TYPE_PATTERN.matcher(stripped);
+            if (slayerTypeMatcher.find()) {
+                slayerType = slayerTypeMatcher.group("type") + " " + slayerTypeMatcher.group("level");
+            }
+            Matcher slayerProgressMatcher = SLAYER_PROGRESS_PATTERN.matcher(stripped);
+            if (slayerProgressMatcher.find()) {
+                slayerProgress = slayerProgressMatcher.group("progress") + "/" + slayerProgressMatcher.group("total");
+            }
+        }
+
+        // Build slayer quest string
+        if (!slayerType.isEmpty()) {
+            slayerQuest = slayerType;
+            if (!slayerProgress.isEmpty()) {
+                slayerQuest += " (" + slayerProgress + ")";
+            }
+        }
+    }
+
+    /**
+     * Parse tab list footer for Cookie Buff and God Potion.
+     * The footer is accessed via Minecraft.gui.getTabList().footer
+     * Source: Skyblocker EffectWidget, SkyblockAddons TabListParser
+     */
+    private void parseTabFooter(Minecraft mc) {
+        if (mc.gui == null) return;
+
+        try {
+            // Access the tab list overlay to get the footer component
+            net.minecraft.client.gui.components.PlayerTabOverlay tabOverlay = mc.gui.getTabList();
+            if (tabOverlay == null) return;
+
+            // The footer field is package-private, but in Mojang mappings it's accessible
+            // We use reflection as a fallback, but first try direct field access
+            Component footerComponent = null;
+            try {
+                // In Mojang mappings 1.21.10, the footer field name
+                java.lang.reflect.Field footerField = tabOverlay.getClass().getDeclaredField("footer");
+                footerField.setAccessible(true);
+                footerComponent = (Component) footerField.get(tabOverlay);
+            } catch (NoSuchFieldException e) {
+                // Try alternate field names
+                for (java.lang.reflect.Field f : tabOverlay.getClass().getDeclaredFields()) {
+                    if (f.getType() == Component.class) {
+                        f.setAccessible(true);
+                        Component candidate = (Component) f.get(tabOverlay);
+                        if (candidate != null) {
+                            String str = candidate.getString();
+                            // The footer typically contains "Active Effects" or other status text
+                            if (str.contains("Active Effects") || str.contains("Cookie Buff")
+                                    || str.contains("God Potion")) {
+                                footerComponent = candidate;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (footerComponent == null) return;
+            String footer = footerComponent.getString();
+            if (footer == null || footer.isEmpty()) return;
+
+            // ── Cookie Buff ─────────────────────────────────────────
+            // Pattern: "Cookie Buff\n<status>"
+            Matcher cookieMatcher = COOKIE_FOOTER_PATTERN.matcher(footer);
+            if (cookieMatcher.find()) {
+                String buff = cookieMatcher.group(1).trim();
+                if (buff.startsWith("Not")) {
+                    cookieBuff = "\u00A7cNot Active";
+                } else {
+                    cookieBuff = buff;
+                }
+            }
+
+            // ── God Potion (from footer) ────────────────────────────
+            // Pattern: "You have a God Potion active! <timer>"
+            if (godPotion.isEmpty()) { // Only if not already found from tab widget
+                Matcher godPotMatcher = GOD_POTION_FOOTER_PATTERN.matcher(footer);
+                if (godPotMatcher.find()) {
+                    godPotion = godPotMatcher.group(1).trim();
+                }
+            }
+
+        } catch (Exception e) {
+            // Silently ignore footer parsing errors
         }
     }
 
@@ -408,6 +683,14 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
         } else if (lower.contains("garden") || lower.contains("plot")
                 || lower.contains("barn")) {
             currentZone = Zone.GARDEN;
+        } else if (lower.contains("hub") || lower.contains("village")
+                || lower.contains("colosseum") || lower.contains("auction")
+                || lower.contains("bazaar") || lower.contains("bank")
+                || lower.contains("mountain") || lower.contains("graveyard")
+                || lower.contains("wilderness") || lower.contains("farm")
+                || lower.contains("forest") || lower.contains("coal mine")
+                || lower.contains("high level") || lower.contains("library")) {
+            currentZone = Zone.HUB;
         } else {
             currentZone = Zone.OTHER;
         }
@@ -438,6 +721,9 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
                 break;
             case GARDEN:
                 layout = FusionConfig.getGardenHudLayout();
+                break;
+            case HUB:
+                layout = FusionConfig.getHubHudLayout();
                 break;
             default:
                 layout = FusionConfig.getDefaultHudLayout();
@@ -516,19 +802,60 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
     private String resolvePlaceholders(String template) {
         String result = template;
 
+        // Universal placeholders
         result = result.replace("{location}", areaName.isEmpty() ? "" : "\u00A7l" + areaName);
+
+        // Mining placeholders
         result = result.replace("{mithril_powder}", mithrilPowder);
         result = result.replace("{gemstone_powder}", gemstonePowder.isEmpty() ? "" : "\u00A7d" + gemstonePowder);
         result = result.replace("{glacite_powder}", glacitePowder);
         result = result.replace("{pickobulus}", resolvePickobulus());
-        result = result.replace("{pests_alive}", pestsAlive > 0 ? String.valueOf(pestsAlive) : "");
-        result = result.replace("{pests_plots}", pestsPlots);
-        result = result.replace("{pest_cooldown}", sprayCooldown);
-        result = result.replace("{visitors}", visitorsInfo);
-        result = result.replace("{jacob_timer}", jacobTimer);
-        result = result.replace("{greenhouse_timer}", greenhouseTimer);
+        result = result.replace("{skymall}", skymallPerk);
+
+        // Garden placeholders (respect individual toggles)
+        result = result.replace("{pests_alive}",
+                FusionConfig.isGardenShowPests() && pestsAlive > 0 ? String.valueOf(pestsAlive) : "");
+        result = result.replace("{pests_plots}",
+                FusionConfig.isGardenShowPests() ? pestsPlots : "");
+        result = result.replace("{spray}",
+                FusionConfig.isGardenShowSpray() ? sprayInfo : "");
+        result = result.replace("{pest_cooldown}",
+                FusionConfig.isGardenShowSpray() ? sprayInfo : ""); // Legacy compat
+        result = result.replace("{visitors}",
+                FusionConfig.isGardenShowVisitors() ? resolveVisitors() : "");
+        result = result.replace("{jacob_timer}",
+                FusionConfig.isGardenShowJacobContest() ? jacobTimer : "");
+        result = result.replace("{greenhouse_timer}",
+                FusionConfig.isGardenShowGreenhouse() ? greenhouseTimer : "");
+
+        // Hub placeholders
+        result = result.replace("{mayor}", mayorName);
+        result = result.replace("{minister}", ministerName);
+        result = result.replace("{slayer_quest}", slayerQuest);
+        result = result.replace("{cookie_buff}", cookieBuff);
+        result = result.replace("{god_potion}", godPotion);
 
         return result;
+    }
+
+    /**
+     * Resolve the visitors placeholder — count only, with timer or "Queue Full".
+     */
+    private String resolveVisitors() {
+        if (visitorCount <= 0 && visitorTimer.isEmpty()) return "";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(visitorCount);
+
+        if (!visitorTimer.isEmpty()) {
+            if (visitorTimer.equalsIgnoreCase("Queue Full")) {
+                sb.append(" (\u00A7cQueue Full\u00A7r)");
+            } else {
+                sb.append(" (Next: ").append(visitorTimer).append(")");
+            }
+        }
+
+        return sb.toString();
     }
 
     /**
@@ -544,9 +871,34 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
     }
 
     /**
+     * Compute greenhouse timer display from stored target time.
+     */
+    private String resolveGreenhouseTimer() {
+        if (greenhouseTargetMillis <= 0) return "";
+
+        long now = System.currentTimeMillis();
+        long remaining = greenhouseTargetMillis - now;
+
+        if (remaining <= 0) {
+            return "\u00A7cREADY";
+        }
+
+        // Format as Xh Xm Xs
+        long seconds = remaining / 1000;
+        long hours = seconds / 3600;
+        long minutes = (seconds % 3600) / 60;
+        long secs = seconds % 60;
+
+        StringBuilder sb = new StringBuilder();
+        if (hours > 0) sb.append(hours).append("h ");
+        if (minutes > 0 || hours > 0) sb.append(minutes).append("m ");
+        sb.append(secs).append("s");
+
+        return sb.toString().trim();
+    }
+
+    /**
      * Check if a line with placeholders resolved to effectively empty content.
-     * A line like "Mithril: {mithril_powder}" with empty powder should be skipped.
-     * A line like "Commissions:" (static label with no placeholder) should NOT be skipped.
      */
     private boolean isEffectivelyEmpty(String template, String resolved) {
         // Get the static part of the template (everything not in {})
@@ -576,6 +928,20 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
         if (template.contains("{jacob_timer}")) return 0xFFFFAA00;
         // Visitors
         if (template.contains("{visitors}")) return 0xFF55FFFF;
+        // Skymall
+        if (template.contains("{skymall}")) return 0xFFFFAA00;
+        // Mayor (gold)
+        if (template.contains("{mayor}")) return 0xFFFFAA00;
+        // Minister (gold)
+        if (template.contains("{minister}")) return 0xFFFFAA00;
+        // Slayer quest (red)
+        if (template.contains("{slayer_quest}")) return 0xFFFF5555;
+        // Cookie buff (light purple)
+        if (template.contains("{cookie_buff}")) return 0xFFFF55FF;
+        // God potion (red)
+        if (template.contains("{god_potion}")) return 0xFFFF5555;
+        // Greenhouse
+        if (template.contains("{greenhouse_timer}")) return 0xFF55FF55;
 
         return 0xFFFFFFFF;
     }

@@ -6,23 +6,41 @@ import moi.fusion_mod.economy.PriceDataManager;
 import moi.fusion_mod.hollows.ChestEspRenderer;
 import moi.fusion_mod.hollows.CrystalHollowsMapHud;
 import moi.fusion_mod.ui.hud.ItemPickupLogHud;
+import moi.fusion_mod.ui.hud.ZoneInfoHud;
 import moi.fusion_mod.ui.layout.JarvisGuiManager;
 import moi.fusion_mod.waypoints.WaypointRenderer;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.ItemLore;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class Fusion_modClient implements ClientModInitializer {
     public static KeyMapping configKeybind;
 
     // Tick counter for periodic tasks (Crystal Hollows map discovery runs every 40 ticks)
     private int tickCounter = 0;
+
+    // Greenhouse lore pattern: "Next Stage: 1h 40m 20s" (SkyHanni GrowthCycle.kt)
+    private static final Pattern GREENHOUSE_NEXT_STAGE_PATTERN =
+            Pattern.compile("Next Stage: (?<time>(?:\\d\\d?[hms] ?)+)");
 
     @Override
     public void onInitializeClient() {
@@ -39,10 +57,79 @@ public class Fusion_modClient implements ClientModInitializer {
         // Start background price data fetching (Bazaar, LBIN, NPC prices)
         PriceDataManager.init();
 
+        // Start periodic mayor/minister fetch from Hypixel API
+        ZoneInfoHud.scheduleMayorFetch();
+
         registerEvents();
     }
 
     private void registerEvents() {
+        // ── World/server change — reset item pickup log and skymall ─────
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            ItemPickupLogHud pickupLog = ItemPickupLogHud.getInstance();
+            if (pickupLog != null) {
+                pickupLog.resetOnWorldChange();
+            }
+            ZoneInfoHud.resetSkymall();
+        });
+
+        // ── Chat message listener — Skymall perk detection ─────────────
+        // Uses ALLOW_GAME so we receive all game messages (not player chat).
+        // Signature: (Component message, boolean overlay) -> boolean
+        ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
+            if (overlay) return true; // Ignore action bar messages
+
+            // Pass the formatted message string to ZoneInfoHud for Skymall detection
+            String formatted = message.getString();
+            ZoneInfoHud.onSkymallChatFormatted(formatted);
+
+            return true; // Never cancel the message
+        });
+
+        // ── Screen open — Crop Diagnostics greenhouse timer parsing ────
+        // When the player opens a chest inventory titled "Crop Diagnostics",
+        // read slot 20 lore for "Next Stage: <time>" pattern.
+        ScreenEvents.BEFORE_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+            if (!(screen instanceof AbstractContainerScreen<?> containerScreen)) return;
+            if (!(containerScreen.getMenu() instanceof ChestMenu chestMenu)) return;
+
+            // We need to check the title after the screen is initialized
+            // Use ScreenEvents.afterRender to check once when inventory contents load
+            ScreenEvents.afterTick(screen).register(afterTickScreen -> {
+                String title = containerScreen.getTitle().getString();
+                if (!title.contains("Crop Diagnostics")) return;
+
+                // Parse slot 20 (0-indexed) for greenhouse timer lore
+                try {
+                    int slotIndex = 20;
+                    if (slotIndex >= chestMenu.getContainer().getContainerSize()) return;
+
+                    ItemStack item = chestMenu.getContainer().getItem(slotIndex);
+                    if (item.isEmpty()) return;
+
+                    ItemLore loreComponent = item.get(DataComponents.LORE);
+                    if (loreComponent == null) return;
+
+                    List<Component> loreLines = loreComponent.lines();
+                    for (Component loreLine : loreLines) {
+                        String stripped = loreLine.getString().replaceAll("\u00A7.", "").trim();
+                        Matcher m = GREENHOUSE_NEXT_STAGE_PATTERN.matcher(stripped);
+                        if (m.find()) {
+                            String timeStr = m.group("time").trim();
+                            long targetMillis = parseTimeToMillis(timeStr);
+                            if (targetMillis > 0) {
+                                ZoneInfoHud.setGreenhouseTarget(
+                                        System.currentTimeMillis() + targetMillis);
+                            }
+                            return; // Found it, stop checking
+                        }
+                    }
+                } catch (Exception ignored) {
+                    // Silently ignore parsing errors
+                }
+            });
+        });
+
         // ── Config keybind (G key) ──────────────────────────────────────
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (configKeybind.consumeClick()) {
@@ -80,5 +167,25 @@ public class Fusion_modClient implements ClientModInitializer {
             // 3D Waypoints + Pickobulus preview
             WaypointRenderer.render(context);
         });
+    }
+
+    /**
+     * Parse a SkyBlock duration string like "1h 40m 20s" into milliseconds.
+     * Supports h (hours), m (minutes), s (seconds) units.
+     */
+    private static long parseTimeToMillis(String timeStr) {
+        long totalMs = 0;
+        Pattern unitPattern = Pattern.compile("(\\d+)([hms])");
+        Matcher matcher = unitPattern.matcher(timeStr);
+        while (matcher.find()) {
+            int value = Integer.parseInt(matcher.group(1));
+            String unit = matcher.group(2);
+            switch (unit) {
+                case "h": totalMs += value * 3600_000L; break;
+                case "m": totalMs += value * 60_000L; break;
+                case "s": totalMs += value * 1000L; break;
+            }
+        }
+        return totalMs;
     }
 }

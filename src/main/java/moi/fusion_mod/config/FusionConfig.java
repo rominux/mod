@@ -58,6 +58,7 @@ public class FusionConfig {
                 "Gemstone: {gemstone_powder}",
                 "Glacite: {glacite_powder}",
                 "Pickobulus: {pickobulus}",
+                "Sky Mall: {skymall}",
                 "",
                 "Commissions:",
                 "{commissions}"
@@ -75,16 +76,35 @@ public class FusionConfig {
         // Garden
         // ══════════════════════════════════════════════════════════════════
         public boolean gardenTrackerEnabled = true;
+        public boolean gardenShowVisitors = true;
+        public boolean gardenShowPests = true;
+        public boolean gardenShowSpray = true;
+        public boolean gardenShowGreenhouse = true;
+        public boolean gardenShowJacobContest = true;
 
         /** HUD layout for Garden zone */
         public List<String> gardenHudLayout = Arrays.asList(
                 "{location}",
                 "Pests: {pests_alive}",
                 "{pests_plots}",
-                "Spray: {pest_cooldown}",
-                "{visitors}",
+                "Spray: {spray}",
+                "Visitors: {visitors}",
                 "Jacob: {jacob_timer}",
                 "Greenhouse: {greenhouse_timer}"
+        );
+
+        // ══════════════════════════════════════════════════════════════════
+        // Hub
+        // ══════════════════════════════════════════════════════════════════
+        /** HUD layout for Hub zone */
+        public List<String> hubHudLayout = Arrays.asList(
+                "{location}",
+                "Mayor: {mayor}",
+                "Minister: {minister}",
+                "{slayer_quest}",
+                "",
+                "Cookie Buff: {cookie_buff}",
+                "God Potion: {god_potion}"
         );
 
         // ══════════════════════════════════════════════════════════════════
@@ -137,10 +157,16 @@ public class FusionConfig {
 
     // Garden
     public static boolean isGardenTrackerEnabled() { return data.gardenTrackerEnabled; }
+    public static boolean isGardenShowVisitors() { return data.gardenShowVisitors; }
+    public static boolean isGardenShowPests() { return data.gardenShowPests; }
+    public static boolean isGardenShowSpray() { return data.gardenShowSpray; }
+    public static boolean isGardenShowGreenhouse() { return data.gardenShowGreenhouse; }
+    public static boolean isGardenShowJacobContest() { return data.gardenShowJacobContest; }
 
     // HUD Layouts
     public static List<String> getMiningHudLayout() { return data.miningHudLayout; }
     public static List<String> getGardenHudLayout() { return data.gardenHudLayout; }
+    public static List<String> getHubHudLayout() { return data.hubHudLayout; }
     public static List<String> getDefaultHudLayout() { return data.defaultHudLayout; }
 
     // Legacy compat
@@ -174,6 +200,11 @@ public class FusionConfig {
 
     // Garden
     public static void setGardenTrackerEnabled(boolean v) { data.gardenTrackerEnabled = v; save(); }
+    public static void setGardenShowVisitors(boolean v) { data.gardenShowVisitors = v; save(); }
+    public static void setGardenShowPests(boolean v) { data.gardenShowPests = v; save(); }
+    public static void setGardenShowSpray(boolean v) { data.gardenShowSpray = v; save(); }
+    public static void setGardenShowGreenhouse(boolean v) { data.gardenShowGreenhouse = v; save(); }
+    public static void setGardenShowJacobContest(boolean v) { data.gardenShowJacobContest = v; save(); }
 
     // Legacy compat
     public static void setCommissionsHudEnabled(boolean v) { data.zoneInfoHudEnabled = v; save(); }
@@ -204,6 +235,7 @@ public class FusionConfig {
                     // Ensure lists are never null (GSON may leave them null if missing from JSON)
                     if (data.miningHudLayout == null) data.miningHudLayout = new ConfigData().miningHudLayout;
                     if (data.gardenHudLayout == null) data.gardenHudLayout = new ConfigData().gardenHudLayout;
+                    if (data.hubHudLayout == null) data.hubHudLayout = new ConfigData().hubHudLayout;
                     if (data.defaultHudLayout == null) data.defaultHudLayout = new ConfigData().defaultHudLayout;
                 }
             }
