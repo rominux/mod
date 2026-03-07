@@ -88,7 +88,7 @@ public class PickobulusTimerHud implements JarvisGuiManager.JarvisHud {
         graphics.fill(offsetX - 2, offsetY - 2, offsetX + 120, offsetY + height, 0x90000000);
 
         for (String line : lines) {
-            graphics.drawString(mc.font, Component.literal(line), offsetX, y, 0xFFFFFF, true);
+            graphics.drawString(mc.font, Component.literal(line), offsetX, y, 0xFFFFFFFF);
             y += 10;
         }
     }

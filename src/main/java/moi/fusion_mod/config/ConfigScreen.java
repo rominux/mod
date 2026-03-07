@@ -206,7 +206,7 @@ public class ConfigScreen extends Screen {
         int screenW = this.width;
 
         // ── Header ──
-        graphics.drawCenteredString(this.font, "\u00A7b\u00A7lFusion Mod Settings", screenW / 2, 10, 0xFFFFFF);
+        graphics.drawCenteredString(this.font, "\u00A7b\u00A7lFusion Mod Settings", screenW / 2, 10, 0xFFFFFFFF);
 
         // ── Sidebar background ──
         graphics.fill(0, HEADER_HEIGHT, SIDEBAR_WIDTH, this.height - 32, 0x80000000);
@@ -217,7 +217,7 @@ public class ConfigScreen extends Screen {
         // ── Category header in right panel ──
         if (selectedCategory != null) {
             graphics.drawString(this.font, "\u00A7e\u00A7l" + selectedCategory,
-                    SIDEBAR_WIDTH + OPTION_PADDING, HEADER_HEIGHT - 12, 0xFFFFFF);
+                    SIDEBAR_WIDTH + OPTION_PADDING, HEADER_HEIGHT - 12, 0xFFFFFFFF);
 
             // ── Draw option labels and descriptions ──
             List<ToggleOption> options = categories.get(selectedCategory);
@@ -226,11 +226,11 @@ public class ConfigScreen extends Screen {
                 for (ToggleOption opt : options) {
                     // Option label (left of toggle button)
                     graphics.drawString(this.font, "\u00A7f" + opt.label,
-                            SIDEBAR_WIDTH + OPTION_PADDING, optionY + 5, 0xFFFFFF);
+                            SIDEBAR_WIDTH + OPTION_PADDING, optionY + 5, 0xFFFFFFFF);
 
                     // Description below the label
                     graphics.drawString(this.font, "\u00A77" + opt.description,
-                            SIDEBAR_WIDTH + OPTION_PADDING, optionY + BUTTON_HEIGHT + 2, 0xAAAAAA);
+                            SIDEBAR_WIDTH + OPTION_PADDING, optionY + BUTTON_HEIGHT + 2, 0xFFAAAAAA);
 
                     optionY += BUTTON_HEIGHT + OPTION_PADDING + 12;
                 }

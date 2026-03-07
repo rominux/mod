@@ -92,7 +92,7 @@ public class DrillFuelBarHud implements JarvisGuiManager.JarvisHud {
                     String fuelText = currentFuel + " / " + maxFuel;
                     int textWidth = mc.font.width(fuelText);
                     graphics.drawString(mc.font, Component.literal(fuelText),
-                            offsetX + barWidth / 2 - textWidth / 2, offsetY + 1, 0xFFFFFF, true);
+                            offsetX + barWidth / 2 - textWidth / 2, offsetY + 1, 0xFFFFFFFF);
 
                 } catch (NumberFormatException ignored) {
                 }

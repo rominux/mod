@@ -161,19 +161,35 @@ public class CommissionHud implements JarvisGuiManager.JarvisHud {
         if (mc.font == null)
             return;
 
-        // Background box (like pasunhack)
-        int height = 12 + (currentCommissions.size() * 10);
-        int width = 130;
-        graphics.fill(offsetX - 2, offsetY - 2, offsetX + width, offsetY + height, 0x90000000);
-
-        // Title header — use Component.literal() and shadow=true for visibility
-        graphics.drawString(mc.font, Component.literal("\u00A73\u00A7lCommissions"), offsetX, offsetY, 0xFFAA00, true);
-
-        // Render commission lines
-        int y = offsetY + 12;
+        // Always show the HUD even when no commissions are found (shows title)
+        // Calculate dynamic width based on longest line
+        int maxWidth = mc.font.width("Commissions");
         for (String line : currentCommissions) {
-            graphics.drawString(mc.font, Component.literal(line), offsetX, y, 0xFFFFFF, true);
-            y += 10;
+            int w = mc.font.width(line.replaceAll("\u00A7.", ""));
+            if (w > maxWidth) maxWidth = w;
+        }
+
+        int boxWidth = maxWidth + 10;
+        int boxHeight = 14 + (currentCommissions.size() * 10);
+
+        // Background box — 0xAARRGGBB format, matching pasunhack
+        graphics.fill(offsetX - 2, offsetY - 2, offsetX + boxWidth, offsetY + boxHeight, 0x90000000);
+
+        // Title — use Component.literal and ARGB color with full alpha (0xFF prefix)
+        graphics.drawString(mc.font, Component.literal("\u00A76\u00A7lCommissions"),
+                offsetX, offsetY, 0xFFFFAA00);
+
+        // Commission lines
+        int y = offsetY + 14;
+        if (currentCommissions.isEmpty()) {
+            graphics.drawString(mc.font, Component.literal("\u00A77No active commissions"),
+                    offsetX, y, 0xFFAAAAAA);
+        } else {
+            for (String line : currentCommissions) {
+                graphics.drawString(mc.font, Component.literal(line),
+                        offsetX, y, 0xFFFFFFFF);
+                y += 10;
+            }
         }
     }
 

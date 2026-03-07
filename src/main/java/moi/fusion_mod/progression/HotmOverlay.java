@@ -49,7 +49,7 @@ public class HotmOverlay implements JarvisGuiManager.JarvisHud {
         // Render box and text at the absolute offset position
         graphics.fill(offsetX - 2, offsetY - 2, offsetX + 148, offsetY + 12, 0x80000000);
         graphics.drawString(font, Component.literal("\u00A7bSky Mall\u00A78: " + activePerk),
-                offsetX, offsetY, 0xFFFFFF, true);
+                offsetX, offsetY, 0xFFFFFFFF);
     }
 
     /**

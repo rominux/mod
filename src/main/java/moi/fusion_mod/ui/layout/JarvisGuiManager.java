@@ -2,7 +2,9 @@ package moi.fusion_mod.ui.layout;
 
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 import org.joml.Vector2ic;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,6 +64,17 @@ public class JarvisGuiManager implements HudRenderCallback {
      */
     @Override
     public void onHudRender(GuiGraphics graphics, DeltaTracker deltaTracker) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.font == null) return;
+
+        // ── Diagnostic test: always draw "Fusion Mod" at top-center ─────
+        // This verifies that text rendering works in the HudRenderCallback.
+        // Uses the exact same pattern as pasunhack's working CommissionsOverlay.
+        int screenW = mc.getWindow().getGuiScaledWidth();
+        graphics.drawString(mc.font, Component.literal("\u00A7a\u00A7lFusion Mod Active"),
+                screenW / 2 - 40, 2, 0xFF55FF55);
+
+        // ── Render all registered HUDs ──────────────────────────────────
         float tickDelta = deltaTracker.getGameTimeDeltaTicks();
         for (JarvisHud hud : huds) {
             if (hud.isEnabled()) {

@@ -55,11 +55,11 @@ public class ItemPickupLogHud implements JarvisGuiManager.JarvisHud {
         int height = 12 + (pickupLog.size() * 10);
         graphics.fill(offsetX - 2, offsetY - 2, offsetX + 150, offsetY + height, 0x90000000);
 
-        graphics.drawString(mc.font, Component.literal("\u00A7e\u00A7lItem Log"), offsetX, y, 0xFFFFFF, true);
+        graphics.drawString(mc.font, Component.literal("\u00A7e\u00A7lItem Log"), offsetX, y, 0xFFFFFFFF);
         y += 12;
 
         for (String line : pickupLog) {
-            graphics.drawString(mc.font, Component.literal(line), offsetX, y, 0xFFFFFF, true);
+            graphics.drawString(mc.font, Component.literal(line), offsetX, y, 0xFFFFFFFF);
             y += 10;
         }
     }
