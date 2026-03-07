@@ -130,6 +130,7 @@ public class FusionConfig {
         // Macros
         // ══════════════════════════════════════════════════════════════════
         public boolean autoMinerEnabled = false;
+        public String autoMinerTargetBlock = "minecraft:mithril_ore";
         public List<String> autoMinerBlocks = Arrays.asList(
                 "minecraft:diamond_ore", "minecraft:deepslate_diamond_ore",
                 "minecraft:mithril_ore", "minecraft:titanium_ore"
@@ -195,6 +196,7 @@ public class FusionConfig {
 
     // Macros
     public static boolean isAutoMinerEnabled() { return data.autoMinerEnabled; }
+    public static String getAutoMinerTargetBlock() { return data.autoMinerTargetBlock; }
     public static List<String> getAutoMinerBlocks() { return data.autoMinerBlocks; }
     public static boolean isAutoMinerPrecision() { return data.autoMinerPrecision; }
     public static boolean isFarmHelperEnabled() { return data.farmHelperEnabled; }
@@ -254,6 +256,7 @@ public class FusionConfig {
 
     // Macros
     public static void setAutoMinerEnabled(boolean v) { data.autoMinerEnabled = v; save(); }
+    public static void setAutoMinerTargetBlock(String v) { data.autoMinerTargetBlock = v; save(); }
     public static void setAutoMinerBlocks(List<String> v) { data.autoMinerBlocks = v; save(); }
     public static void setAutoMinerPrecision(boolean v) { data.autoMinerPrecision = v; save(); }
     public static void setFarmHelperEnabled(boolean v) { data.farmHelperEnabled = v; save(); }
@@ -293,6 +296,7 @@ public class FusionConfig {
                     if (data.hubHudLayout == null) data.hubHudLayout = new ConfigData().hubHudLayout;
                     if (data.defaultHudLayout == null) data.defaultHudLayout = new ConfigData().defaultHudLayout;
                     if (data.autoMinerBlocks == null) data.autoMinerBlocks = new ConfigData().autoMinerBlocks;
+                    if (data.autoMinerTargetBlock == null) data.autoMinerTargetBlock = new ConfigData().autoMinerTargetBlock;
                 }
             }
         } catch (Exception e) {

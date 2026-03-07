@@ -104,6 +104,17 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
     private enum Zone { MINING, GARDEN, HUB, OTHER }
     private Zone currentZone = Zone.OTHER;
 
+    // Expose current area name for other systems (e.g. FarmHelper garden check)
+    private static volatile String lastKnownArea = "";
+
+    /**
+     * Returns the most recently parsed area name from the tab list.
+     * Can be called from any thread. Updated each render frame.
+     */
+    public static String getCurrentAreaName() {
+        return lastKnownArea;
+    }
+
     // ── Patterns ────────────────────────────────────────────────────────
 
     // Scoreboard pest detection (SkyHanni)
@@ -698,6 +709,9 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
      * Detect current zone from area name.
      */
     private void detectZone() {
+        // Update static area name for external consumers
+        lastKnownArea = areaName;
+
         if (areaName.isEmpty()) {
             currentZone = Zone.OTHER;
             return;

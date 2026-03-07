@@ -2,6 +2,7 @@ package moi.fusion_mod.config;
 
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -50,6 +51,9 @@ public class ConfigScreen extends Screen {
             this.setter = setter;
         }
     }
+
+    // ── Active EditBox (for text input fields in the current category) ───
+    private EditBox targetBlockField = null;
 
     public ConfigScreen(Screen parent) {
         super(Component.literal("Fusion Mod Configuration"));
@@ -195,6 +199,23 @@ public class ConfigScreen extends Screen {
 
                 optionY += BUTTON_HEIGHT + OPTION_PADDING + 12; // extra space for description
             }
+
+            // ── Auto-Miner Target Block text field (Macros category only) ──
+            targetBlockField = null;
+            if ("Macros".equals(selectedCategory)) {
+                int fieldX = optionX;
+                int fieldW = optionW - 10;
+                int fieldY = optionY + 4;
+
+                targetBlockField = new EditBox(this.font, fieldX + 120, fieldY, fieldW - 120, BUTTON_HEIGHT,
+                        Component.literal("Target Block"));
+                targetBlockField.setMaxLength(128);
+                targetBlockField.setValue(FusionConfig.getAutoMinerTargetBlock());
+                targetBlockField.setResponder(value -> {
+                    FusionConfig.setAutoMinerTargetBlock(value.trim());
+                });
+                this.addRenderableWidget(targetBlockField);
+            }
         }
 
         // ── Done button at bottom ───────────────────────────────────────
@@ -242,6 +263,15 @@ public class ConfigScreen extends Screen {
                             SIDEBAR_WIDTH + OPTION_PADDING, optionY + BUTTON_HEIGHT + 2, 0xFFAAAAAA);
 
                     optionY += BUTTON_HEIGHT + OPTION_PADDING + 12;
+                }
+
+                // ── Target Block label (Macros category only) ──
+                if ("Macros".equals(selectedCategory) && targetBlockField != null) {
+                    int fieldLabelY = optionY + 4;
+                    graphics.drawString(this.font, "\u00A7fTarget Block:",
+                            SIDEBAR_WIDTH + OPTION_PADDING, fieldLabelY + 5, 0xFFFFFFFF);
+                    graphics.drawString(this.font, "\u00A77Block ID the Auto-Miner will prioritize (e.g. minecraft:mithril_ore)",
+                            SIDEBAR_WIDTH + OPTION_PADDING, fieldLabelY + BUTTON_HEIGHT + 2, 0xFFAAAAAA);
                 }
             }
         }

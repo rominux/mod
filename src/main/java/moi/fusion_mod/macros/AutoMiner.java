@@ -15,7 +15,9 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -92,7 +94,19 @@ public class AutoMiner {
         Vec3 currentPos = new Vec3(mc.player.getX(), mc.player.getY(), mc.player.getZ());
 
         // Iterate through requested blocks IN ORDER of priority
+        // The target block from config takes top priority
+        List<String> blockIds = new ArrayList<>();
+        String primaryBlock = FusionConfig.getAutoMinerTargetBlock();
+        if (primaryBlock != null && !primaryBlock.trim().isEmpty()) {
+            blockIds.add(primaryBlock.trim());
+        }
+        // Add the rest from the block list, skipping duplicates
         for (String id : FusionConfig.getAutoMinerBlocks()) {
+            if (!blockIds.contains(id)) {
+                blockIds.add(id);
+            }
+        }
+        for (String id : blockIds) {
             Block targetBlock = null;
             try {
                 ResourceLocation resLoc = ResourceLocation.parse(id);

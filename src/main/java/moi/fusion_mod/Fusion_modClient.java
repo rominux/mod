@@ -56,16 +56,19 @@ public class Fusion_modClient implements ClientModInitializer {
             KeyMapping.Category.register(ResourceLocation.parse("fusion_mod:general"))
         ));
 
+        // Register the macros category once, then reuse it for both keybinds
+        KeyMapping.Category macrosCategory = KeyMapping.Category.register(ResourceLocation.parse("fusion_mod:macros"));
+
         autoMinerKeybind = KeyBindingHelper.registerKeyBinding(new KeyMapping(
             "key.fusion_mod.auto_miner",
             GLFW.GLFW_KEY_KP_1,
-            KeyMapping.Category.register(ResourceLocation.parse("fusion_mod:macros"))
+            macrosCategory
         ));
 
         farmHelperKeybind = KeyBindingHelper.registerKeyBinding(new KeyMapping(
             "key.fusion_mod.farm_helper",
             GLFW.GLFW_KEY_KP_2,
-            KeyMapping.Category.register(ResourceLocation.parse("fusion_mod:macros"))
+            macrosCategory
         ));
 
         JarvisGuiManager.initializeHuds();
