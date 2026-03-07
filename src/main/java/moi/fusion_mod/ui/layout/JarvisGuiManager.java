@@ -29,6 +29,7 @@ public class JarvisGuiManager {
         huds.add(new moi.fusion_mod.ui.hud.PickobulusTimerHud());
         huds.add(new moi.fusion_mod.ui.hud.ItemPickupLogHud());
         huds.add(new moi.fusion_mod.progression.HotmOverlay());
+        huds.add(new moi.fusion_mod.hollows.CrystalHollowsMapHud());
     }
 
     // Called from MixinInGameHud

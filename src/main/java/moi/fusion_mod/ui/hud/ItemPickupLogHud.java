@@ -1,5 +1,6 @@
 package moi.fusion_mod.ui.hud;
 
+import moi.fusion_mod.config.FusionConfig;
 import moi.fusion_mod.ui.layout.JarvisGuiManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -21,7 +22,7 @@ public class ItemPickupLogHud implements JarvisGuiManager.JarvisHud {
 
     @Override
     public boolean isEnabled() {
-        return true;
+        return FusionConfig.isItemPickupLogEnabled();
     }
 
     @Override

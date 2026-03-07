@@ -1,5 +1,6 @@
 package moi.fusion_mod.ui.hud;
 
+import moi.fusion_mod.config.FusionConfig;
 import moi.fusion_mod.ui.layout.JarvisGuiManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -18,7 +19,7 @@ public class DrillFuelBarHud implements JarvisGuiManager.JarvisHud {
 
     @Override
     public boolean isEnabled() {
-        return true;
+        return FusionConfig.isDrillFuelBarEnabled();
     }
 
     @Override
