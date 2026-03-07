@@ -1,5 +1,6 @@
 package moi.fusion_mod.mixin.client;
 
+import moi.fusion_mod.hollows.CrystalHollowsMapHud;
 import moi.fusion_mod.social.ChatFilter;
 import moi.fusion_mod.social.PartyCommands;
 import net.minecraft.client.gui.components.ChatComponent;
@@ -18,6 +19,12 @@ public class MixinChatListener {
             ci.cancel();
             return;
         }
-        PartyCommands.handleMessage(message.getString());
+
+        String text = message.getString();
+        PartyCommands.handleMessage(text);
+
+        // Route chat messages to Crystal Hollows map for zone auto-discovery
+        // Logic extracted from CrystalsLocationsManager.extractLocationFromMessage
+        CrystalHollowsMapHud.onChatMessage(text);
     }
 }

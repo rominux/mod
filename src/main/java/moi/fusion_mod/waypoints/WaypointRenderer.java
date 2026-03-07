@@ -4,12 +4,12 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import moi.fusion_mod.config.FusionConfig;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.ShapeRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -148,8 +148,8 @@ public class WaypointRenderer {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
 
-        Vec3 cameraPos = context.camera().getPosition();
-        PoseStack poseStack = context.matrixStack();
+        Vec3 cameraPos = context.worldState().cameraRenderState.pos;
+        PoseStack poseStack = context.matrices();
         MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
 
         for (Waypoint wp : waypoints.values()) {
@@ -284,7 +284,7 @@ public class WaypointRenderer {
 
         poseStack.pushPose();
         VertexConsumer consumer = bufferSource.getBuffer(RenderType.lines());
-        LevelRenderer.renderLineBox(poseStack, consumer, renderBox, r, g, b, a);
+        ShapeRenderer.renderLineBox(poseStack.last(), consumer, renderBox, r, g, b, a);
         poseStack.popPose();
     }
 

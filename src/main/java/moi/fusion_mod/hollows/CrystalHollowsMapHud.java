@@ -151,8 +151,8 @@ public class CrystalHollowsMapHud implements JarvisGuiManager.JarvisHud {
         if (mc.player == null || mc.font == null) return;
 
         // ── Scale transform (from CrystalsHudWidget.renderWidget) ───────
-        graphics.pose().pushPose();
-        graphics.pose().scale(mapScale, mapScale, 1.0f);
+        graphics.pose().pushMatrix();
+        graphics.pose().scale(mapScale, mapScale);
 
         // ── Draw map background ─────────────────────────────────────────
         // Try to blit the texture; if it fails (missing), draw a fallback
@@ -207,22 +207,22 @@ public class CrystalHollowsMapHud implements JarvisGuiManager.JarvisHud {
 
         // Position, scale, and rotate the player marker
         // Exact logic from CrystalsHudWidget: translate -> scale 0.75 -> rotate
-        graphics.pose().pushPose();
-        graphics.pose().translate(renderX, renderY, 0);
-        graphics.pose().scale(0.75f, 0.75f, 1.0f);
+        graphics.pose().pushMatrix();
+        graphics.pose().translate(renderX, renderY);
+        graphics.pose().scale(0.75f, 0.75f);
 
         // Rotate around marker center (2.5, 3.5) using yaw2Cardinal
         float cardinalYaw = yaw2Cardinal(playerYaw);
         // Apply rotation via pose matrix around the marker's visual center
-        graphics.pose().translate(2.5f, 3.5f, 0);
-        graphics.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees(cardinalYaw));
-        graphics.pose().translate(-2.5f, -3.5f, 0);
+        graphics.pose().translate(2.5f, 3.5f);
+        graphics.pose().rotate((float) Math.toRadians(cardinalYaw));
+        graphics.pose().translate(-2.5f, -3.5f);
 
         // Draw the vanilla map player icon (5x7 from an 8x8 sheet, offset 2,0)
         graphics.blit(MAP_ICON, 0, 0, 2, 0, 5, 7, 8, 8);
-        graphics.pose().popPose();
+        graphics.pose().popMatrix();
 
-        graphics.pose().popPose(); // pop scale transform
+        graphics.pose().popMatrix(); // pop scale transform
     }
 
     // ── Coordinate transform (EXACT from CrystalsHudWidget) ─────────────
@@ -376,7 +376,7 @@ public class CrystalHollowsMapHud implements JarvisGuiManager.JarvisHud {
         Minecraft mc = Minecraft.getInstance();
         if (mc.getConnection() == null) return null;
 
-        for (PlayerInfo entry : mc.getConnection().getListedPlayerInfos()) {
+        for (PlayerInfo entry : mc.getConnection().getListedOnlinePlayers()) {
             Component displayName = entry.getTabListDisplayName();
             if (displayName == null) continue;
             String text = displayName.getString().trim();

@@ -186,7 +186,7 @@ public class CommissionHud implements JarvisGuiManager.JarvisHud {
 
         // Extracted EXACTLY from
         // doc/skyblocker/src/main/java/de/hysky/skyblocker/skyblock/dwarven/CommissionLabels.java
-        for (PlayerInfo entry : mc.getConnection().getListedPlayerInfos()) {
+        for (PlayerInfo entry : mc.getConnection().getListedOnlinePlayers()) {
             Component displayName = entry.getTabListDisplayName();
             if (displayName == null)
                 continue;

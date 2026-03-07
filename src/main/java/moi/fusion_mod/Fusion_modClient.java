@@ -10,9 +10,10 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.resources.ResourceLocation;
 import org.lwjgl.glfw.GLFW;
 
 public class Fusion_modClient implements ClientModInitializer {
@@ -29,7 +30,7 @@ public class Fusion_modClient implements ClientModInitializer {
         configKeybind = KeyBindingHelper.registerKeyBinding(new KeyMapping(
             "key.fusion_mod.config",
             GLFW.GLFW_KEY_G,
-            "category.fusion_mod.general"
+            KeyMapping.Category.register(ResourceLocation.parse("fusion_mod:general"))
         ));
 
         JarvisGuiManager.initializeHuds();

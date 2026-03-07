@@ -36,11 +36,11 @@ public class JarvisGuiManager {
     public static void render(GuiGraphics graphics, float tickDelta) {
         for (JarvisHud hud : huds) {
             if (hud.isEnabled()) {
-                graphics.pose().pushPose();
+                graphics.pose().pushMatrix();
                 Vector2ic pos = hud.getPosition();
-                graphics.pose().translate(pos.x(), pos.y(), 0);
+                graphics.pose().translate(pos.x(), pos.y());
                 hud.render(graphics, tickDelta);
-                graphics.pose().popPose();
+                graphics.pose().popMatrix();
             }
         }
     }

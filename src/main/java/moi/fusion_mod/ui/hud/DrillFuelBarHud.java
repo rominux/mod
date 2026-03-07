@@ -5,10 +5,14 @@ import moi.fusion_mod.ui.layout.JarvisGuiManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import org.joml.Vector2i;
 import org.joml.Vector2ic;
 
+import java.util.List;
 import java.util.regex.Pattern;
 
 public class DrillFuelBarHud implements JarvisGuiManager.JarvisHud {
@@ -56,9 +60,9 @@ public class DrillFuelBarHud implements JarvisGuiManager.JarvisHud {
         // it.
         // In 1.21.10 lore strings require extracting from components, but sticking to
         // logic structure:
-        List<net.minecraft.network.chat.Component> lore = stack.getTooltipLines(mc.player,
-                net.minecraft.world.item.TooltipFlag.NORMAL);
-        for (net.minecraft.network.chat.Component comp : lore) {
+        List<Component> lore = stack.getTooltipLines(Item.TooltipContext.EMPTY, mc.player,
+                TooltipFlag.NORMAL);
+        for (Component comp : lore) {
             String line = comp.getString();
             if (line.contains("Fuel: ")) {
                 drillFuel = ChatFormatting.stripFormatting(line);

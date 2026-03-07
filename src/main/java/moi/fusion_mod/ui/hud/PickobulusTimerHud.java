@@ -62,7 +62,7 @@ public class PickobulusTimerHud implements JarvisGuiManager.JarvisHud {
             // Adapted logic for fetching cooldown from tab list (PickobulusHelper: Process
             // cooldown info)
             String cooldownString = "Pickobulus: Available";
-            for (net.minecraft.client.multiplayer.PlayerInfo entry : mc.getConnection().getListedPlayerInfos()) {
+            for (net.minecraft.client.multiplayer.PlayerInfo entry : mc.getConnection().getListedOnlinePlayers()) {
                 Component displayName = entry.getTabListDisplayName();
                 if (displayName != null) {
                     String string = displayName.getString().trim();

@@ -2,10 +2,6 @@ package moi.fusion_mod.mixin.client;
 
 import moi.fusion_mod.ui.layout.JarvisGuiManager;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.BossHealthOverlay;
-import net.minecraft.client.gui.components.DebugScreenOverlay;
-import net.minecraft.client.gui.components.SpectatorGui;
-import net.minecraft.client.renderer.entity.ItemRenderer;
 import net.minecraft.client.gui.Gui;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

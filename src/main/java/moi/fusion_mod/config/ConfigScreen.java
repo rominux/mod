@@ -132,10 +132,11 @@ public class ConfigScreen extends Screen {
     @Override
     protected void init() {
         super.init();
-        rebuildWidgets();
+        // rebuildWidgets() is called by super.init() already
     }
 
-    private void rebuildWidgets() {
+    @Override
+    protected void rebuildWidgets() {
         clearWidgets();
         scrollOffset = 0;
 

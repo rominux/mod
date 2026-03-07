@@ -1,10 +1,10 @@
 package moi.fusion_mod.hollows;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.ShapeRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -28,7 +28,7 @@ public class ChestEspRenderer {
             return;
         }
 
-        Vec3 cameraPos = context.camera().getPosition();
+        Vec3 cameraPos = context.worldState().cameraRenderState.pos;
         VertexConsumer vertexConsumer = context.consumers().getBuffer(RenderType.lines());
 
         // In Skyblocker, they fetch:
@@ -47,7 +47,7 @@ public class ChestEspRenderer {
             Vec3 center = chest.getCenter().subtract(0, 0.0625, 0);
             AABB aabb = AABB.ofSize(center, 0.885, 0.885, 0.885).move(-cameraPos.x, -cameraPos.y, -cameraPos.z);
 
-            LevelRenderer.renderLineBox(context.matrixStack(), vertexConsumer, aabb, color[0], color[1], color[2],
+            ShapeRenderer.renderLineBox(context.matrices().last(), vertexConsumer, aabb, color[0], color[1], color[2],
                     color[3]);
         }
     }

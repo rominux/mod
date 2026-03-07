@@ -4,6 +4,7 @@ import moi.fusion_mod.progression.ExperimentSolver;
 import moi.fusion_mod.ui.screens.QuickNavOverlay;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.input.MouseButtonEvent;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -21,8 +22,8 @@ public class MixinHandledScreen {
     }
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
-    public void onMouseClicked(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> cir) {
-        if (QuickNavOverlay.mouseClicked(mouseX, mouseY, button)) {
+    public void onMouseClicked(MouseButtonEvent event, boolean consumed, CallbackInfoReturnable<Boolean> cir) {
+        if (QuickNavOverlay.mouseClicked(event.x(), event.y(), event.button())) {
             cir.setReturnValue(true);
         }
     }
