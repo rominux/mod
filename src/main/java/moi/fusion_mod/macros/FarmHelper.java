@@ -18,19 +18,16 @@ import net.minecraft.world.phys.Vec3;
 import java.util.*;
 
 /**
- * FarmHelper — simplified S-Shape vertical crop farming macro + basic pest killer.
+ * FarmHelper — collision-based S-Shape vertical crop farming macro + basic pest killer.
  * Ported from FarmHelper v2 (1.8.9 Forge) to Fabric 1.21.10 Mojang mappings.
  *
- * Movement uses vector-projection: the camera is locked at a fixed yaw/pitch,
- * and W/A/S/D presses are computed by projecting the distance-to-target vector
- * onto the player's forward and right look vectors. This eliminates jitter.
+ * Movement uses direct key presses (keyLeft / keyRight) with collision detection:
+ *   - Hold LEFT or RIGHT (relative to yaw) while holding attack to break crops
+ *   - When the player stops moving (stuck against wall) for 10+ ticks, switch lane
+ *   - Lane switch holds forward/backward until 1 block of distance is covered
+ *   - Then reverse direction (LEFT <-> RIGHT)
  *
- * S-Shape pattern:
- *  - Walk LEFT (relative to yaw) while attacking crops
- *  - When blocked, switch lane (one block forward/backward)
- *  - Walk RIGHT while attacking crops
- *  - Repeat
- *
+ * No waypoints, no vector projection — just direct strafing with wall detection.
  * Restricted to Garden area only.
  */
 public class FarmHelper {
@@ -55,19 +52,17 @@ public class FarmHelper {
     private static float yaw = 0f;
     private static float pitch = 3f;
 
-    // ── Waypoint-based movement ─────────────────────────────────────────
-    // The macro moves toward a "target" position. When the target is
-    // reached, the state machine picks the next waypoint.
-    private static double targetX = 0;
-    private static double targetZ = 0;
-    private static boolean hasTarget = false;
-
-    // ── Previous position (for 1D projection check) ───────────────────
+    // ── Collision detection ─────────────────────────────────────────────
+    // Previous position to measure movement delta each tick
     private static double prevX = 0;
+    private static double prevY = 0;
     private static double prevZ = 0;
+    // Counter: how many consecutive ticks the player has been stuck
+    private static int stuckTicks = 0;
+    // Threshold: consider "stuck" after this many ticks of near-zero movement
+    private static final int STUCK_THRESHOLD = 10; // 0.5 seconds
 
     // ── Lane switching ──────────────────────────────────────────────────
-    // Remembers which direction to go for the lane switch
     private static boolean switchForward = true;
     private static double laneStartX = 0;
     private static double laneStartZ = 0;
@@ -147,7 +142,7 @@ public class FarmHelper {
                     currentState = State.PEST_KILLING;
                     pestTarget = pest;
                     pestKillTicks = 0;
-                    hasTarget = false;
+                    stuckTicks = 0;
                     stopAllKeys(mc);
                     switchToVacuum(mc);
                 }
@@ -172,7 +167,7 @@ public class FarmHelper {
     private static void onEnable(Minecraft mc) {
         currentState = State.NONE;
         previousState = State.NONE;
-        hasTarget = false;
+        stuckTicks = 0;
         pestTarget = null;
         pestScanCounter = 0;
 
@@ -187,11 +182,12 @@ public class FarmHelper {
             yaw = getClosest90(mc.player.getYRot());
         }
 
-        // Apply initial rotation
+        // Apply initial rotation and record position
         if (mc.player != null) {
             mc.player.setYRot(yaw);
             mc.player.setXRot(pitch);
             prevX = mc.player.getX();
+            prevY = mc.player.getY();
             prevZ = mc.player.getZ();
         }
 
@@ -203,7 +199,7 @@ public class FarmHelper {
     private static void onDisable(Minecraft mc) {
         stopAllKeys(mc);
         currentState = State.NONE;
-        hasTarget = false;
+        stuckTicks = 0;
         pestTarget = null;
         if (mc.player != null) {
             mc.player.displayClientMessage(Component.literal("\u00A7cFarmHelper disabled"), true);
@@ -211,194 +207,93 @@ public class FarmHelper {
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    // S-Shape Farming — Vector Projection Movement
+    // S-Shape Farming — Collision-Based Movement
     // ══════════════════════════════════════════════════════════════════════
 
     private static void tickFarming(Minecraft mc) {
         double playerX = mc.player.getX();
+        double playerY = mc.player.getY();
         double playerZ = mc.player.getZ();
 
-        // ── Check if current target is reached ─────────────────────────
-        if (hasTarget) {
-            double dx = targetX - playerX;
-            double dz = targetZ - playerZ;
-            double dist2D = Math.sqrt(dx * dx + dz * dz);
+        // ── If NONE, pick initial direction and start ──────────────────
+        if (currentState == State.NONE) {
+            currentState = calculateInitialDirection(mc);
+            stuckTicks = 0;
+            prevX = playerX;
+            prevY = playerY;
+            prevZ = playerZ;
+        }
 
-            // 1D projection check: has the player passed the waypoint line?
-            // Project the remaining vector onto the movement direction.
-            // If the dot product is negative, we've overshot the target.
-            double moveDirX = targetX - prevX;
-            double moveDirZ = targetZ - prevZ;
-            double moveDirLen = Math.sqrt(moveDirX * moveDirX + moveDirZ * moveDirZ);
-            boolean overshot = false;
-            if (moveDirLen > 0.001) {
-                // Normalize the original direction of travel
-                double ndx = moveDirX / moveDirLen;
-                double ndz = moveDirZ / moveDirLen;
-                // Dot product of remaining distance with travel direction
-                double dot = dx * ndx + dz * ndz;
-                overshot = dot <= 0.0;
+        // ── Handle LEFT / RIGHT states ─────────────────────────────────
+        if (currentState == State.LEFT || currentState == State.RIGHT) {
+            // Hold the strafe key and attack
+            stopMovementKeys(mc);
+            if (currentState == State.LEFT) {
+                mc.options.keyLeft.setDown(true);
+            } else {
+                mc.options.keyRight.setDown(true);
+            }
+            mc.options.keyAttack.setDown(true);
+
+            // Collision detection: measure how much the player actually moved
+            double movementSqr = squaredDistance2D(playerX, playerZ, prevX, prevZ);
+            if (movementSqr < 0.0001) {
+                stuckTicks++;
+            } else {
+                stuckTicks = 0;
             }
 
-            boolean reached = dist2D <= 0.3 || overshot;
-
-            if (reached) {
-                // Release all movement keys briefly on waypoint transition
+            // If stuck for more than STUCK_THRESHOLD ticks, end of row reached
+            if (stuckTicks >= STUCK_THRESHOLD) {
                 stopAllKeys(mc);
-                hasTarget = false;
-                // State transition happens below
-            }
-        }
+                stuckTicks = 0;
 
-        prevX = playerX;
-        prevZ = playerZ;
-
-        // ── If no target, pick next waypoint based on state ────────────
-        if (!hasTarget) {
-            advanceState(mc);
-            pickNextTarget(mc);
-        }
-
-        // ── Move toward target using vector projection ─────────────────
-        if (hasTarget) {
-            moveTowardTarget(mc);
-
-            // Hold attack while farming (LEFT/RIGHT states)
-            if (currentState == State.LEFT || currentState == State.RIGHT) {
-                mc.options.keyAttack.setDown(true);
-            }
-        }
-    }
-
-    /**
-     * Advance the state machine. Called when the current waypoint is reached
-     * or when starting from NONE.
-     */
-    private static void advanceState(Minecraft mc) {
-        switch (currentState) {
-            case NONE: {
-                // Determine initial direction: check which side has more space
-                currentState = calculateInitialDirection(mc);
-                break;
-            }
-            case LEFT: {
-                // Was going left, hit the end -> switch lane
-                previousState = State.LEFT;
+                // Transition to SWITCHING_LANE
+                previousState = currentState;
                 currentState = State.SWITCHING_LANE;
-                // Remember lane switch start position for distance check
-                laneStartX = mc.player.getX();
-                laneStartZ = mc.player.getZ();
+                laneStartX = playerX;
+                laneStartZ = playerZ;
                 decideLaneDirection(mc);
-                break;
             }
-            case RIGHT: {
-                // Was going right, hit the end -> switch lane
-                previousState = State.RIGHT;
-                currentState = State.SWITCHING_LANE;
-                laneStartX = mc.player.getX();
-                laneStartZ = mc.player.getZ();
-                decideLaneDirection(mc);
-                break;
+
+            prevX = playerX;
+            prevY = playerY;
+            prevZ = playerZ;
+            return;
+        }
+
+        // ── Handle SWITCHING_LANE state ────────────────────────────────
+        if (currentState == State.SWITCHING_LANE) {
+            stopMovementKeys(mc);
+            mc.options.keyAttack.setDown(false);
+
+            // Hold forward or backward to move to the next crop row
+            if (switchForward) {
+                mc.options.keyUp.setDown(true);
+            } else {
+                mc.options.keyDown.setDown(true);
             }
-            case SWITCHING_LANE: {
-                // Done switching lane, go the opposite direction
+            mc.options.keySprint.setDown(true);
+
+            // Measure distance moved during the lane switch
+            double switchDist = Math.sqrt(squaredDistance2D(playerX, playerZ, laneStartX, laneStartZ));
+
+            if (switchDist >= 1.0) {
+                // Done switching — go the opposite direction
+                stopAllKeys(mc);
+                stuckTicks = 0;
+
                 if (previousState == State.LEFT) {
                     currentState = State.RIGHT;
                 } else {
                     currentState = State.LEFT;
                 }
-                break;
             }
-            default:
-                break;
+
+            prevX = playerX;
+            prevY = playerY;
+            prevZ = playerZ;
         }
-    }
-
-    /**
-     * Pick the next target position based on the current state.
-     * Targets are placed far ahead in the movement direction so the player
-     * keeps walking until blocked.
-     */
-    private static void pickNextTarget(Minecraft mc) {
-        double playerX = mc.player.getX();
-        double playerZ = mc.player.getZ();
-
-        // Compute forward and right vectors from the fixed yaw
-        double rad = Math.toRadians(yaw);
-        double fx = -Math.sin(rad); // forward X
-        double fz = Math.cos(rad);  // forward Z
-        double rx = -Math.sin(rad + Math.PI / 2); // right X
-        double rz = Math.cos(rad + Math.PI / 2);  // right Z
-
-        switch (currentState) {
-            case LEFT: {
-                // Move left relative to yaw = negative right direction
-                // Place target far away (50 blocks) so we keep walking
-                targetX = playerX - rx * 50.0;
-                targetZ = playerZ - rz * 50.0;
-                hasTarget = true;
-                break;
-            }
-            case RIGHT: {
-                // Move right relative to yaw = positive right direction
-                targetX = playerX + rx * 50.0;
-                targetZ = playerZ + rz * 50.0;
-                hasTarget = true;
-                break;
-            }
-            case SWITCHING_LANE: {
-                // Move forward or backward by ~1.2 blocks
-                double dist = 1.2;
-                if (switchForward) {
-                    targetX = laneStartX + fx * dist;
-                    targetZ = laneStartZ + fz * dist;
-                } else {
-                    targetX = laneStartX - fx * dist;
-                    targetZ = laneStartZ - fz * dist;
-                }
-                hasTarget = true;
-                break;
-            }
-            default:
-                break;
-        }
-    }
-
-    /**
-     * Move toward the current target using vector projection.
-     * Projects the distance vector onto the player's forward and right vectors
-     * to determine which W/A/S/D keys to press.
-     */
-    private static void moveTowardTarget(Minecraft mc) {
-        double playerX = mc.player.getX();
-        double playerZ = mc.player.getZ();
-
-        // Player's forward vector from yaw
-        double rad = Math.toRadians(mc.player.getYRot());
-        double fx = -Math.sin(rad);
-        double fz = Math.cos(rad);
-
-        // Player's right vector (yaw + 90)
-        double radR = Math.toRadians(mc.player.getYRot() + 90.0);
-        double rx = -Math.sin(radR);
-        double rz = Math.cos(radR);
-
-        // Distance to target
-        double dx = targetX - playerX;
-        double dz = targetZ - playerZ;
-
-        // Project onto forward and right axes
-        double fwdVal = dx * fx + dz * fz;
-        double rightVal = dx * rx + dz * rz;
-
-        // Set movement keys based on projection values
-        mc.options.keyUp.setDown(fwdVal > 0.1);
-        mc.options.keyDown.setDown(fwdVal < -0.1);
-        mc.options.keyRight.setDown(rightVal > 0.1);
-        mc.options.keyLeft.setDown(rightVal < -0.1);
-
-        // Sprint while switching lanes
-        mc.options.keySprint.setDown(currentState == State.SWITCHING_LANE);
     }
 
     /**
@@ -432,6 +327,15 @@ public class FarmHelper {
         }
     }
 
+    /**
+     * Squared 2D distance (XZ plane only).
+     */
+    private static double squaredDistance2D(double x1, double z1, double x2, double z2) {
+        double dx = x1 - x2;
+        double dz = z1 - z2;
+        return dx * dx + dz * dz;
+    }
+
     // ══════════════════════════════════════════════════════════════════════
     // Pest Killing
     // ══════════════════════════════════════════════════════════════════════
@@ -441,7 +345,7 @@ public class FarmHelper {
             // Pest is dead or gone, return to farming
             pestTarget = null;
             currentState = previousState != State.PEST_KILLING ? previousState : State.NONE;
-            hasTarget = false;
+            stuckTicks = 0;
             return;
         }
 
@@ -451,7 +355,7 @@ public class FarmHelper {
             // Too far, give up
             pestTarget = null;
             currentState = previousState != State.PEST_KILLING ? previousState : State.NONE;
-            hasTarget = false;
+            stuckTicks = 0;
             return;
         }
 
@@ -480,7 +384,7 @@ public class FarmHelper {
             pestTarget = null;
             mc.options.keyAttack.setDown(false);
             currentState = previousState != State.PEST_KILLING ? previousState : State.NONE;
-            hasTarget = false;
+            stuckTicks = 0;
         }
     }
 
@@ -545,6 +449,7 @@ public class FarmHelper {
     // Key Simulation Utilities
     // ══════════════════════════════════════════════════════════════════════
 
+    /** Release all keys including attack, sprint, jump. */
     private static void stopAllKeys(Minecraft mc) {
         mc.options.keyUp.setDown(false);
         mc.options.keyDown.setDown(false);
@@ -553,6 +458,15 @@ public class FarmHelper {
         mc.options.keySprint.setDown(false);
         mc.options.keyAttack.setDown(false);
         mc.options.keyJump.setDown(false);
+    }
+
+    /** Release only movement keys (up/down/left/right/sprint), keep attack untouched. */
+    private static void stopMovementKeys(Minecraft mc) {
+        mc.options.keyUp.setDown(false);
+        mc.options.keyDown.setDown(false);
+        mc.options.keyLeft.setDown(false);
+        mc.options.keyRight.setDown(false);
+        mc.options.keySprint.setDown(false);
     }
 
     // ══════════════════════════════════════════════════════════════════════
