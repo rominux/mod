@@ -14,6 +14,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * FarmHelper — Waypoint-following crop farming macro + pest killer.
@@ -156,14 +157,34 @@ public class FarmHelper {
                 return;
             }
 
-            // Check that waypoints are loaded — try auto-loading from FarmConfig if needed
-            if (waypoints.size() < 2 && activeCropName != null) {
-                loadFarmFromConfig(activeCropName);
+            // Auto-detect the closest farm by finding the nearest start waypoint
+            if (waypoints.size() < 2 && mc.player != null) {
+                String closestCrop = null;
+                double closestDist = Double.MAX_VALUE;
+
+                for (Map.Entry<String, FarmConfig.FarmData> entry : FarmConfig.getFarms().entrySet()) {
+                    FarmConfig.Waypoint startWp = entry.getValue().getStartWaypoint();
+                    if (startWp == null) continue;
+                    if (entry.getValue().waypoints.size() < 2) continue;
+
+                    double dist = mc.player.position().distanceTo(startWp.toVec3());
+                    if (dist < closestDist) {
+                        closestDist = dist;
+                        closestCrop = entry.getKey();
+                    }
+                }
+
+                if (closestCrop != null && closestDist <= 5.0) {
+                    loadFarmFromConfig(closestCrop);
+                }
             }
+
             if (waypoints.size() < 2) {
                 if (mc.player != null) {
                     mc.player.displayClientMessage(
-                            Component.literal("\u00A7cFarmHelper: No waypoints loaded! Set a crop with /farmsetup or configure via the GUI."), false);
+                            Component.literal("\u00A7cYou must stand near a farm's Start Waypoint to begin farming!"), false);
+                    mc.player.displayClientMessage(
+                            Component.literal("\u00A7cFarmHelper: No waypoints loaded! Please configure a crop in the Macro Settings GUI and stand on its start point."), false);
                 }
                 return;
             }

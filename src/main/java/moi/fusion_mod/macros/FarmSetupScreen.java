@@ -233,7 +233,7 @@ public class FarmSetupScreen extends Screen {
                 Component.literal(String.format("\u00A7e[Farm Setup] TURN %d recorded \u00A77(%.1f, %.1f, %.1f)", turnCount + 1, x, y, z)), false);
     }
 
-    /** Mark an End waypoint and finish recording. Computes yaw/pitch and saves. */
+    /** Mark an End waypoint and finish recording. Uses the player's exact current yaw/pitch. */
     public static void markEnd() {
         if (!recording) return;
         Minecraft mc = Minecraft.getInstance();
@@ -253,14 +253,12 @@ public class FarmSetupScreen extends Screen {
         double x = Math.round(mc.player.getX() * 1000.0) / 1000.0;
         double y = Math.round(mc.player.getY() * 1000.0) / 1000.0;
         double z = Math.round(mc.player.getZ() * 1000.0) / 1000.0;
-        float yaw = mc.player.getYRot();
-        float pitch = mc.player.getXRot();
 
-        recordedPoints.add(new RecordedPoint("end", x, y, z, yaw, pitch));
+        // Capture the player's exact current yaw and pitch as the farm's locked angles
+        float farmYaw = Math.round(mc.player.getYRot() * 10.0f) / 10.0f;
+        float farmPitch = Math.round(mc.player.getXRot() * 10.0f) / 10.0f;
 
-        // Compute circular average yaw + arithmetic average pitch (matching Python _choose_angle)
-        float avgYaw = computeCircularAverageYaw();
-        float avgPitch = computeAveragePitch();
+        recordedPoints.add(new RecordedPoint("end", x, y, z, farmYaw, farmPitch));
 
         // Build waypoint list (only type, x, y, z — yaw/pitch are per-farm)
         List<FarmConfig.Waypoint> waypoints = new ArrayList<>();
@@ -268,13 +266,17 @@ public class FarmSetupScreen extends Screen {
             waypoints.add(new FarmConfig.Waypoint(p.type, p.x, p.y, p.z));
         }
 
-        // Save to FarmConfig
-        FarmConfig.setFarm(recordingCrop, waypoints, avgYaw, avgPitch);
+        // Save to FarmConfig using the player's exact angles at the moment of Mark End
+        FarmConfig.setFarm(recordingCrop, waypoints, farmYaw, farmPitch);
 
         mc.player.displayClientMessage(
                 Component.literal(String.format(
-                        "\u00A7a[Farm Setup] \u00A7e%s\u00A7a saved! %d points, yaw=%.1f\u00B0, pitch=%.1f\u00B0",
-                        recordingCrop, waypoints.size(), avgYaw, avgPitch)), false);
+                        "\u00A7a[Setup] Farm saved with Yaw: %.1f\u00B0 and Pitch: %.1f\u00B0",
+                        farmYaw, farmPitch)), false);
+        mc.player.displayClientMessage(
+                Component.literal(String.format(
+                        "\u00A7a[Setup] \u00A7e%s\u00A7a \u2014 %d waypoints saved.",
+                        recordingCrop, waypoints.size())), false);
 
         // End recording
         recording = false;
@@ -299,34 +301,4 @@ public class FarmSetupScreen extends Screen {
                 Component.literal("\u00A7d[Farm Setup] Undone: " + removed.type.toUpperCase()), false);
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    // Angle Computation (matching Python _choose_angle)
-    // ══════════════════════════════════════════════════════════════════════
-
-    /**
-     * Circular average of all recorded yaw values.
-     * Uses atan2(sum_sin, sum_cos) to handle wrapping correctly.
-     */
-    private static float computeCircularAverageYaw() {
-        double sumSin = 0;
-        double sumCos = 0;
-        for (RecordedPoint p : recordedPoints) {
-            sumSin += Math.sin(Math.toRadians(p.yaw));
-            sumCos += Math.cos(Math.toRadians(p.yaw));
-        }
-        float avg = (float) Math.toDegrees(Math.atan2(sumSin, sumCos));
-        return Math.round(avg * 10.0f) / 10.0f;
-    }
-
-    /**
-     * Arithmetic average of all recorded pitch values.
-     */
-    private static float computeAveragePitch() {
-        float sum = 0;
-        for (RecordedPoint p : recordedPoints) {
-            sum += p.pitch;
-        }
-        float avg = sum / recordedPoints.size();
-        return Math.round(avg * 10.0f) / 10.0f;
-    }
 }
