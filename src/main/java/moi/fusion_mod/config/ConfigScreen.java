@@ -1,5 +1,6 @@
 package moi.fusion_mod.config;
 
+import moi.fusion_mod.macros.FarmSetupScreen;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -296,6 +297,18 @@ public class ConfigScreen extends Screen {
                             }
                         }
                 ).bounds(optionX + fieldW + 4, addRowY, addBtnW, BUTTON_HEIGHT).build());
+
+                // ── Farm Setup button ───────────────────────────────────
+                int farmSetupY = addRowY + BUTTON_HEIGHT + 16;
+                int farmSetupW = 160;
+                this.addRenderableWidget(Button.builder(
+                        Component.literal("\u00A7eFarm Setup"),
+                        button -> {
+                            if (this.minecraft != null) {
+                                this.minecraft.setScreen(new FarmSetupScreen(this));
+                            }
+                        }
+                ).bounds(optionX, farmSetupY, farmSetupW, BUTTON_HEIGHT).build());
             }
         }
 
@@ -385,6 +398,11 @@ public class ConfigScreen extends Screen {
                     int addRowY = optionY + blockList.size() * rowHeight + 6;
                     graphics.drawString(this.font, "\u00A77Add block:",
                             optionX, addRowY - 12, 0xFFAAAAAA);
+
+                    // "Farm Setup" section label
+                    int farmSetupLabelY = addRowY + BUTTON_HEIGHT + 6;
+                    graphics.drawString(this.font, "\u00A7e\u00A7lFarm Waypoint Setup:",
+                            optionX, farmSetupLabelY, 0xFFFFFFFF);
                 }
             }
         }

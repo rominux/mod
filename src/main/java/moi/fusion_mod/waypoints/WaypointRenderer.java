@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import moi.fusion_mod.config.FusionConfig;
+import moi.fusion_mod.macros.FarmConfig;
 import moi.fusion_mod.ui.hud.ZoneInfoHud;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
 import net.minecraft.client.Camera;
@@ -67,8 +68,9 @@ public class WaypointRenderer {
 
         boolean showWaypoints = FusionConfig.isWaypointsEnabled() && FusionConfig.isCommissionWaypointsEnabled();
         boolean showPickobulus = FusionConfig.isPickobulusPreviewEnabled();
+        boolean showFarmWaypoints = FusionConfig.isWaypointsEnabled() && isInGarden();
 
-        if (!showWaypoints && !showPickobulus) return;
+        if (!showWaypoints && !showPickobulus && !showFarmWaypoints) return;
 
         Camera camera = mc.gameRenderer.getMainCamera();
         Vec3 camPos = camera.getPosition();
@@ -199,6 +201,78 @@ public class WaypointRenderer {
                 context.matrices().popPose();
             }
         }
+
+        // ── Farm start waypoints (Garden only) ─────────────────────────
+        if (showFarmWaypoints) {
+            Font font = mc.font;
+            MultiBufferSource.BufferSource immediate = mc.renderBuffers().bufferSource();
+
+            Map<String, FarmConfig.FarmData> farms = FarmConfig.getFarms();
+            for (Map.Entry<String, FarmConfig.FarmData> entry : farms.entrySet()) {
+                String cropName = entry.getKey();
+                FarmConfig.FarmData farmData = entry.getValue();
+
+                FarmConfig.Waypoint startWp = farmData.getStartWaypoint();
+                if (startWp == null) continue;
+
+                // Draw beacon beam (green for farm waypoints)
+                AABB beamBox = new AABB(
+                        startWp.x - 0.1, startWp.y, startWp.z - 0.1,
+                        startWp.x + 0.1, startWp.y + 100, startWp.z + 0.1
+                ).move(-camPos.x, -camPos.y, -camPos.z);
+
+                VertexConsumer lineConsumer = immediate.getBuffer(RenderType.lines());
+                drawBox(context.matrices(), lineConsumer, beamBox, 0.2f, 1.0f, 0.2f, 0.7f);
+
+                // Calculate distance and build label
+                Vec3 waypointVec = new Vec3(startWp.x, startWp.y, startWp.z);
+                double distance = camPos.distanceTo(waypointVec);
+                String label = "\u00A7l" + cropName.replace("_", " ") + "\u00A7r \u00A7a(" + (int) distance + "m)";
+
+                // Render billboarded text
+                context.matrices().pushPose();
+
+                context.matrices().translate(
+                        startWp.x - camPos.x,
+                        startWp.y + 1.0 - camPos.y,
+                        startWp.z - camPos.z);
+
+                // Billboard rotation (face camera)
+                context.matrices().mulPose(Axis.YP.rotationDegrees(-camera.getYRot()));
+                context.matrices().mulPose(Axis.XP.rotationDegrees(camera.getXRot()));
+
+                // Scale text with distance
+                float scale = 0.025f * (float) Math.max(2.0, distance / 10.0);
+                context.matrices().scale(-scale, -scale, scale);
+
+                // Render text (SEE_THROUGH so it shows through walls)
+                float xOffset = -font.width(label) / 2.0f;
+                Matrix4f positionMatrix = context.matrices().last().pose();
+
+                font.drawInBatch(
+                        label,
+                        xOffset,
+                        0f,
+                        0xFF55FF55,  // Green text for farm waypoints
+                        false,
+                        positionMatrix,
+                        immediate,
+                        Font.DisplayMode.SEE_THROUGH,
+                        0xFF000000,
+                        0xF000F0);
+
+                immediate.endBatch();
+                context.matrices().popPose();
+            }
+        }
+    }
+
+    /**
+     * Check if the player is currently in the Garden area.
+     */
+    private static boolean isInGarden() {
+        String area = ZoneInfoHud.getCurrentAreaName().toLowerCase();
+        return area.contains("garden") || area.contains("plot") || area.contains("barn");
     }
 
     /**

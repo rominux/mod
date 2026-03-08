@@ -6,7 +6,9 @@ import moi.fusion_mod.economy.PriceDataManager;
 import moi.fusion_mod.hollows.ChestEspRenderer;
 import moi.fusion_mod.hollows.CrystalHollowsMapHud;
 import moi.fusion_mod.macros.AutoMiner;
+import moi.fusion_mod.macros.FarmConfig;
 import moi.fusion_mod.macros.FarmHelper;
+import moi.fusion_mod.macros.FarmSetupScreen;
 import moi.fusion_mod.ui.hud.ItemPickupLogHud;
 import moi.fusion_mod.ui.hud.ZoneInfoHud;
 import moi.fusion_mod.ui.layout.JarvisGuiManager;
@@ -39,6 +41,12 @@ public class Fusion_modClient implements ClientModInitializer {
     public static KeyMapping autoMinerKeybind;
     public static KeyMapping farmHelperKeybind;
 
+    // Farm setup recording keybindings (F8-F11)
+    public static KeyMapping setupMarkStart;
+    public static KeyMapping setupMarkTurn;
+    public static KeyMapping setupMarkEnd;
+    public static KeyMapping setupUndo;
+
     // Tick counter for periodic tasks (Crystal Hollows map discovery runs every 40 ticks)
     private int tickCounter = 0;
 
@@ -49,6 +57,7 @@ public class Fusion_modClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         FusionConfig.init();
+        FarmConfig.load();
 
         configKeybind = KeyBindingHelper.registerKeyBinding(new KeyMapping(
             "key.fusion_mod.config",
@@ -69,6 +78,33 @@ public class Fusion_modClient implements ClientModInitializer {
             "key.fusion_mod.farm_helper",
             GLFW.GLFW_KEY_KP_2,
             macrosCategory
+        ));
+
+        // Farm setup recording keybindings (F8-F11) — only active during recording mode
+        KeyMapping.Category setupCategory = KeyMapping.Category.register(ResourceLocation.parse("fusion_mod:farm_setup"));
+
+        setupMarkStart = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+            "key.fusion_mod.setup_start",
+            GLFW.GLFW_KEY_F8,
+            setupCategory
+        ));
+
+        setupMarkTurn = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+            "key.fusion_mod.setup_turn",
+            GLFW.GLFW_KEY_F9,
+            setupCategory
+        ));
+
+        setupMarkEnd = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+            "key.fusion_mod.setup_end",
+            GLFW.GLFW_KEY_F10,
+            setupCategory
+        ));
+
+        setupUndo = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+            "key.fusion_mod.setup_undo",
+            GLFW.GLFW_KEY_F11,
+            setupCategory
         ));
 
         JarvisGuiManager.initializeHuds();
@@ -167,6 +203,28 @@ public class Fusion_modClient implements ClientModInitializer {
             }
             while (farmHelperKeybind.consumeClick()) {
                 FarmHelper.toggle();
+            }
+
+            // ── Farm setup recording keybinds (only active during recording) ──
+            while (setupMarkStart.consumeClick()) {
+                if (FarmSetupScreen.isRecording()) {
+                    FarmSetupScreen.markStart();
+                }
+            }
+            while (setupMarkTurn.consumeClick()) {
+                if (FarmSetupScreen.isRecording()) {
+                    FarmSetupScreen.markTurn();
+                }
+            }
+            while (setupMarkEnd.consumeClick()) {
+                if (FarmSetupScreen.isRecording()) {
+                    FarmSetupScreen.markEnd();
+                }
+            }
+            while (setupUndo.consumeClick()) {
+                if (FarmSetupScreen.isRecording()) {
+                    FarmSetupScreen.undoLast();
+                }
             }
 
             // ── Macro tick handlers ────────────────────────────────────

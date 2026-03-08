@@ -46,6 +46,9 @@ public class FarmHelper {
     /** State to return to after pest killing finishes. */
     private static State stateBeforePest = State.NONE;
 
+    /** The active crop name (used for AutoTool selection and FarmConfig loading). */
+    private static String activeCropName = null;
+
     // ── Fixed camera orientation ────────────────────────────────────────
     private static float yaw = 0f;
     private static float pitch = 3f;
@@ -115,6 +118,29 @@ public class FarmHelper {
     }
 
     /**
+     * Load waypoints from FarmConfig for the given crop name.
+     * Returns true if the farm was found and waypoints were loaded.
+     */
+    public static boolean loadFarmFromConfig(String cropName) {
+        FarmConfig.FarmData farm = FarmConfig.getFarm(cropName);
+        if (farm == null || farm.waypoints.size() < 2) return false;
+
+        activeCropName = cropName;
+        setWaypoints(farm.toVec3List(), farm.yaw, farm.pitch);
+        return true;
+    }
+
+    /** Get the currently active crop name (null if not set). */
+    public static String getActiveCropName() {
+        return activeCropName;
+    }
+
+    /** Set the crop name (used by FarmSetupScreen or external callers). */
+    public static void setActiveCropName(String cropName) {
+        activeCropName = cropName;
+    }
+
+    /**
      * Toggle the farm helper. Checks that the player is in the Garden before enabling.
      */
     public static void toggle() {
@@ -130,11 +156,14 @@ public class FarmHelper {
                 return;
             }
 
-            // Check that waypoints are loaded
+            // Check that waypoints are loaded — try auto-loading from FarmConfig if needed
+            if (waypoints.size() < 2 && activeCropName != null) {
+                loadFarmFromConfig(activeCropName);
+            }
             if (waypoints.size() < 2) {
                 if (mc.player != null) {
                     mc.player.displayClientMessage(
-                            Component.literal("\u00A7cFarmHelper: No waypoints loaded! Use setWaypoints() first."), false);
+                            Component.literal("\u00A7cFarmHelper: No waypoints loaded! Set a crop with /farmsetup or configure via the GUI."), false);
                 }
                 return;
             }
@@ -163,7 +192,7 @@ public class FarmHelper {
                     pestTarget = pest;
                     pestKillTicks = 0;
                     stopAllKeys(mc);
-                    switchToVacuum(mc);
+                    AutoTool.selectVacuum(mc);
                 }
             }
         }
@@ -228,9 +257,20 @@ public class FarmHelper {
         // Hold attack throughout farming
         mc.options.keyAttack.setDown(true);
 
+        // Auto-select the correct farming tool for this crop
+        if (activeCropName != null) {
+            if (!AutoTool.selectToolForCrop(mc, activeCropName)) {
+                if (mc.player != null) {
+                    mc.player.displayClientMessage(
+                            Component.literal("\u00A7eWarning: No tool found for " + activeCropName + " in hotbar"), false);
+                }
+            }
+        }
+
         if (mc.player != null) {
+            String cropInfo = activeCropName != null ? " [" + activeCropName + "]" : "";
             mc.player.displayClientMessage(
-                    Component.literal("\u00A7aFarmHelper enabled (" + waypoints.size() + " waypoints)"), true);
+                    Component.literal("\u00A7aFarmHelper enabled" + cropInfo + " (" + waypoints.size() + " waypoints)"), true);
         }
     }
 
@@ -388,6 +428,10 @@ public class FarmHelper {
             currentState = (stateBeforePest != State.PEST_KILLING && stateBeforePest != State.NONE)
                     ? stateBeforePest : State.NAVIGATING;
             stuckTicks = 0;
+            // Re-select farming tool for the active crop
+            if (activeCropName != null) {
+                AutoTool.selectToolForCrop(mc, activeCropName);
+            }
             // Re-enable attack for farming
             mc.options.keyAttack.setDown(true);
             return;
@@ -401,6 +445,10 @@ public class FarmHelper {
             currentState = (stateBeforePest != State.PEST_KILLING && stateBeforePest != State.NONE)
                     ? stateBeforePest : State.NAVIGATING;
             stuckTicks = 0;
+            // Re-select farming tool for the active crop
+            if (activeCropName != null) {
+                AutoTool.selectToolForCrop(mc, activeCropName);
+            }
             mc.options.keyAttack.setDown(true);
             return;
         }
@@ -432,6 +480,10 @@ public class FarmHelper {
             currentState = (stateBeforePest != State.PEST_KILLING && stateBeforePest != State.NONE)
                     ? stateBeforePest : State.NAVIGATING;
             stuckTicks = 0;
+            // Re-select farming tool for the active crop
+            if (activeCropName != null) {
+                AutoTool.selectToolForCrop(mc, activeCropName);
+            }
         }
     }
 
@@ -479,17 +531,6 @@ public class FarmHelper {
         } catch (Exception ignored) {
         }
         return false;
-    }
-
-    private static void switchToVacuum(Minecraft mc) {
-        if (mc.player == null) return;
-        for (int i = 0; i < 9; i++) {
-            ItemStack stack = mc.player.getInventory().getItem(i);
-            if (!stack.isEmpty() && stack.getHoverName().getString().contains("Vacuum")) {
-                mc.player.getInventory().setSelectedSlot(i);
-                return;
-            }
-        }
     }
 
     // ══════════════════════════════════════════════════════════════════════
