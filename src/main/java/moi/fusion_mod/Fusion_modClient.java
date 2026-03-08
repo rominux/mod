@@ -9,6 +9,7 @@ import moi.fusion_mod.macros.AutoMiner;
 import moi.fusion_mod.macros.FarmConfig;
 import moi.fusion_mod.macros.FarmHelper;
 import moi.fusion_mod.macros.FarmSetupScreen;
+import moi.fusion_mod.macros.PestTracker;
 import moi.fusion_mod.ui.hud.ItemPickupLogHud;
 import moi.fusion_mod.ui.hud.ZoneInfoHud;
 import moi.fusion_mod.ui.layout.JarvisGuiManager;
@@ -142,6 +143,9 @@ public class Fusion_modClient implements ClientModInitializer {
             String formatted = message.getString();
             ZoneInfoHud.onSkymallChatFormatted(formatted);
 
+            // Pass to PestTracker for pest spawn detection
+            PestTracker.onChatMessage(formatted);
+
             return true; // Never cancel the message
         });
 
@@ -241,6 +245,11 @@ public class Fusion_modClient implements ClientModInitializer {
             // Crystal Hollows map zone discovery (every 40 ticks = 2 seconds)
             if (tickCounter % 40 == 0) {
                 CrystalHollowsMapHud.tick();
+            }
+
+            // Pest tracker update (every 20 ticks = 1 second)
+            if (tickCounter % 20 == 0) {
+                PestTracker.tick();
             }
 
             // Item Pickup Log — detect inventory changes every tick

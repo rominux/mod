@@ -7,7 +7,8 @@
     "MixinKeyboard",
     "MixinChatListener",
     "MixinClientLevel",
-    "MixinHandledScreen"
+    "MixinHandledScreen",
+    "MixinClientPacketListener"
   ],
   "injectors": {
     "defaultRequire": 1
