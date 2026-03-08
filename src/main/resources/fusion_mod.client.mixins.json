@@ -6,6 +6,7 @@
     "MixinInGameHud",
     "MixinKeyboard",
     "MixinChatListener",
+    "MixinClientLevel",
     "MixinHandledScreen"
   ],
   "injectors": {

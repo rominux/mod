@@ -73,6 +73,9 @@ public class Fusion_modClient implements ClientModInitializer {
 
         JarvisGuiManager.initializeHuds();
 
+        // Register chest ESP block update listener
+        ChestEspRenderer.init();
+
         // Start background price data fetching (Bazaar, LBIN, NPC prices)
         PriceDataManager.init();
 
@@ -90,6 +93,7 @@ public class Fusion_modClient implements ClientModInitializer {
                 pickupLog.resetOnWorldChange();
             }
             ZoneInfoHud.resetSkymall();
+            ChestEspRenderer.clear();
         });
 
         // ── Chat message listener — Skymall perk detection ─────────────

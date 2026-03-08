@@ -1026,6 +1026,22 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
         if (lower.contains("mithril")) {
             return new DisplayLine("\u00A7b" + line, 0xFFFFFFFF);
         }
+        // Gemstone-specific colors
+        if (lower.contains("ruby")) {
+            return new DisplayLine("\u00A7c" + line, 0xFFFFFFFF);
+        }
+        if (lower.contains("sapphire")) {
+            return new DisplayLine("\u00A7b" + line, 0xFFFFFFFF);
+        }
+        if (lower.contains("topaz")) {
+            return new DisplayLine("\u00A7e" + line, 0xFFFFFFFF);
+        }
+        if (lower.contains("amethyst")) {
+            return new DisplayLine("\u00A75" + line, 0xFFFFFFFF);
+        }
+        if (lower.contains("amber")) {
+            return new DisplayLine("\u00A76" + line, 0xFFFFFFFF);
+        }
         if (!lower.contains("titanium") && !lower.contains("aquamarine")
                 && !lower.contains("onyx") && !lower.contains("citrine")
                 && !lower.contains("peridot") && !lower.contains("slayer")

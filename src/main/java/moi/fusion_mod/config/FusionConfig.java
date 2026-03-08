@@ -133,12 +133,17 @@ public class FusionConfig {
         public List<String> autoMinerBlocks = Arrays.asList(
                 "minecraft:mithril_ore", "minecraft:titanium_ore"
         );
-        public boolean autoMinerPrecision = true;
 
         public boolean farmHelperEnabled = false;
         public int farmHelperMacroType = 0;  // 0 = S-Shape Vertical Crop
         public float farmHelperCustomYaw = 0f;
         public float farmHelperCustomPitch = 3f;
+
+        // ══════════════════════════════════════════════════════════════════
+        // Solvers
+        // ══════════════════════════════════════════════════════════════════
+        public boolean fetchurSolverEnabled = true;
+        public boolean puzzlerSolverEnabled = true;
     }
 
     // ── Initialization ──────────────────────────────────────────────────────
@@ -195,11 +200,14 @@ public class FusionConfig {
     // Macros
     public static boolean isAutoMinerEnabled() { return data.autoMinerEnabled; }
     public static List<String> getAutoMinerBlocks() { return data.autoMinerBlocks; }
-    public static boolean isAutoMinerPrecision() { return data.autoMinerPrecision; }
     public static boolean isFarmHelperEnabled() { return data.farmHelperEnabled; }
     public static int getFarmHelperMacroType() { return data.farmHelperMacroType; }
     public static float getFarmHelperCustomYaw() { return data.farmHelperCustomYaw; }
     public static float getFarmHelperCustomPitch() { return data.farmHelperCustomPitch; }
+
+    // Solvers
+    public static boolean isFetchurSolverEnabled() { return data.fetchurSolverEnabled; }
+    public static boolean isPuzzlerSolverEnabled() { return data.puzzlerSolverEnabled; }
 
     // HUD Layouts
     public static List<String> getMiningHudLayout() { return data.miningHudLayout; }
@@ -254,11 +262,14 @@ public class FusionConfig {
     // Macros
     public static void setAutoMinerEnabled(boolean v) { data.autoMinerEnabled = v; save(); }
     public static void setAutoMinerBlocks(List<String> v) { data.autoMinerBlocks = v; save(); }
-    public static void setAutoMinerPrecision(boolean v) { data.autoMinerPrecision = v; save(); }
     public static void setFarmHelperEnabled(boolean v) { data.farmHelperEnabled = v; save(); }
     public static void setFarmHelperMacroType(int v) { data.farmHelperMacroType = v; save(); }
     public static void setFarmHelperCustomYaw(float v) { data.farmHelperCustomYaw = v; save(); }
     public static void setFarmHelperCustomPitch(float v) { data.farmHelperCustomPitch = v; save(); }
+
+    // Solvers
+    public static void setFetchurSolverEnabled(boolean v) { data.fetchurSolverEnabled = v; save(); }
+    public static void setPuzzlerSolverEnabled(boolean v) { data.puzzlerSolverEnabled = v; save(); }
 
     // Legacy compat
     public static void setCommissionsHudEnabled(boolean v) { data.zoneInfoHudEnabled = v; save(); }

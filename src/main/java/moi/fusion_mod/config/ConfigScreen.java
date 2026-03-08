@@ -142,11 +142,17 @@ public class ConfigScreen extends Screen {
         List<ToggleOption> macros = new ArrayList<>();
         macros.add(new ToggleOption("Auto Miner", "Toggle auto-mining nearby configured blocks",
                 FusionConfig::isAutoMinerEnabled, FusionConfig::setAutoMinerEnabled));
-        macros.add(new ToggleOption("Precision Mining", "Use precise crosshair targeting for mining",
-                FusionConfig::isAutoMinerPrecision, FusionConfig::setAutoMinerPrecision));
         macros.add(new ToggleOption("Farm Helper", "Toggle automatic farming macro",
                 FusionConfig::isFarmHelperEnabled, FusionConfig::setFarmHelperEnabled));
         categories.put("Macros", macros);
+
+        // ── Solvers ──
+        List<ToggleOption> solvers = new ArrayList<>();
+        solvers.add(new ToggleOption("Fetchur Solver", "Decode Fetchur's daily riddle and show the answer",
+                FusionConfig::isFetchurSolverEnabled, FusionConfig::setFetchurSolverEnabled));
+        solvers.add(new ToggleOption("Puzzler Solver", "Solve Puzzler's arrow sequence and mark the block",
+                FusionConfig::isPuzzlerSolverEnabled, FusionConfig::setPuzzlerSolverEnabled));
+        categories.put("Solvers", solvers);
     }
 
     // ── Screen lifecycle ────────────────────────────────────────────────────
@@ -206,7 +212,7 @@ public class ConfigScreen extends Screen {
                 optionY += 8; // extra spacing before the priority list section
 
                 List<String> blockList = FusionConfig.getAutoMinerBlocks();
-                int rowHeight = 22;
+                int rowHeight = 24;
                 int smallBtnW = 20;
                 int removeBtnW = 20;
                 int iconSize = 16;
@@ -230,7 +236,7 @@ public class ConfigScreen extends Screen {
                                         this.init();
                                     }
                                 }
-                        ).bounds(optionX + optionW - (smallBtnW * 3 + btnSpacing * 2 + removeBtnW), rowY, smallBtnW, rowHeight - 2).build());
+                        ).bounds(optionX + optionW - (smallBtnW * 3 + btnSpacing * 2 + removeBtnW), rowY, smallBtnW, rowHeight - 4).build());
                     }
 
                     // "Down" button (disabled for last item)
@@ -246,7 +252,7 @@ public class ConfigScreen extends Screen {
                                         this.init();
                                     }
                                 }
-                        ).bounds(optionX + optionW - (smallBtnW * 2 + btnSpacing + removeBtnW), rowY, smallBtnW, rowHeight - 2).build());
+                        ).bounds(optionX + optionW - (smallBtnW * 2 + btnSpacing + removeBtnW), rowY, smallBtnW, rowHeight - 4).build());
                     }
 
                     // "-" remove button (red)
@@ -260,7 +266,7 @@ public class ConfigScreen extends Screen {
                                     this.init();
                                 }
                             }
-                    ).bounds(optionX + optionW - removeBtnW, rowY, removeBtnW, rowHeight - 2).build());
+                    ).bounds(optionX + optionW - removeBtnW, rowY, removeBtnW, rowHeight - 4).build());
                 }
 
                 // ── Add new block row at the bottom ──────────────────────
@@ -353,7 +359,7 @@ public class ConfigScreen extends Screen {
                             optionX, optionY - 4, 0xFFAAAAAA);
 
                     List<String> blockList = FusionConfig.getAutoMinerBlocks();
-                    int rowHeight = 22;
+                    int rowHeight = 24;
                     int iconSize = 16;
 
                     for (int i = 0; i < blockList.size(); i++) {

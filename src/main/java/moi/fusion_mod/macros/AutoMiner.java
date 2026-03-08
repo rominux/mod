@@ -40,7 +40,6 @@ public class AutoMiner {
     private static int aimWaitTicks = 0;
     private static int stuckTicks = 0;
 
-    public static Vec3 precisionTarget = null;
     public static BlockPos currentTarget = null;
 
     public static final Set<BlockPos> BLACKLIST_TEMP = new HashSet<>();
@@ -174,7 +173,6 @@ public class AutoMiner {
                 smoothLook(mc, angle);
 
                 currentTarget = bestTarget;
-                precisionTarget = null;
                 aimWaitTicks = 0;
                 stuckTicks = 0;
                 return; // Priority matched!
@@ -238,7 +236,6 @@ public class AutoMiner {
             mc.gameMode.stopDestroyBlock();
         }
         currentTarget = null;
-        precisionTarget = null;
         miningStartTime = 0;
         aimWaitTicks = 0;
         stuckTicks = 0;
@@ -276,14 +273,9 @@ public class AutoMiner {
         float currentYaw = mc.player.getYRot();
         float currentPitch = mc.player.getXRot();
 
-        Vec2 target = targetAngle;
-        if (FusionConfig.isAutoMinerPrecision() && precisionTarget != null) {
-            target = getYawPitch(mc.player.getEyePosition(), precisionTarget);
-        }
-
-        if (getAngleDistance(currentYaw, currentPitch, target.x, target.y) >= 1.0) {
-            float newYaw = Mth.rotLerp(0.45f, currentYaw, target.x);
-            float newPitch = Mth.rotLerp(0.45f, currentPitch, target.y);
+        if (getAngleDistance(currentYaw, currentPitch, targetAngle.x, targetAngle.y) >= 1.0) {
+            float newYaw = Mth.rotLerp(0.45f, currentYaw, targetAngle.x);
+            float newPitch = Mth.rotLerp(0.45f, currentPitch, targetAngle.y);
 
             mc.player.setYRot(newYaw);
             mc.player.setXRot(newPitch);

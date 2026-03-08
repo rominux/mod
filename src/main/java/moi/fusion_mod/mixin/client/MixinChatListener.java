@@ -3,6 +3,8 @@ package moi.fusion_mod.mixin.client;
 import moi.fusion_mod.hollows.CrystalHollowsMapHud;
 import moi.fusion_mod.social.ChatFilter;
 import moi.fusion_mod.social.PartyCommands;
+import moi.fusion_mod.solvers.FetchurSolver;
+import moi.fusion_mod.solvers.PuzzlerSolver;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
@@ -21,10 +23,16 @@ public class MixinChatListener {
         }
 
         String text = message.getString();
+        // Strip formatting codes for solver pattern matching
+        String stripped = text.replaceAll("\u00A7[0-9a-fk-or]", "");
+
         PartyCommands.handleMessage(text);
 
         // Route chat messages to Crystal Hollows map for zone auto-discovery
-        // Logic extracted from CrystalsLocationsManager.extractLocationFromMessage
         CrystalHollowsMapHud.onChatMessage(text);
+
+        // Fetchur & Puzzler solvers
+        FetchurSolver.onChatMessage(stripped);
+        PuzzlerSolver.onChatMessage(stripped);
     }
 }

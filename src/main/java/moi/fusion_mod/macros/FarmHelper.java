@@ -62,10 +62,9 @@ public class FarmHelper {
     private static double targetZ = 0;
     private static boolean hasTarget = false;
 
-    // ── Stuck detection ─────────────────────────────────────────────────
+    // ── Previous position (for 1D projection check) ───────────────────
     private static double prevX = 0;
     private static double prevZ = 0;
-    private static int stuckTicks = 0;
 
     // ── Lane switching ──────────────────────────────────────────────────
     // Remembers which direction to go for the lane switch
@@ -176,7 +175,6 @@ public class FarmHelper {
         hasTarget = false;
         pestTarget = null;
         pestScanCounter = 0;
-        stuckTicks = 0;
 
         // Set pitch from config
         pitch = FusionConfig.getFarmHelperCustomPitch();
@@ -220,31 +218,40 @@ public class FarmHelper {
         double playerX = mc.player.getX();
         double playerZ = mc.player.getZ();
 
-        // ── Stuck detection ────────────────────────────────────────────
-        if (Math.abs(playerX - prevX) < 0.005 && Math.abs(playerZ - prevZ) < 0.005) {
-            stuckTicks++;
-        } else {
-            stuckTicks = 0;
-        }
-        prevX = playerX;
-        prevZ = playerZ;
-
         // ── Check if current target is reached ─────────────────────────
         if (hasTarget) {
             double dx = targetX - playerX;
             double dz = targetZ - playerZ;
             double dist2D = Math.sqrt(dx * dx + dz * dz);
 
-            boolean reached = dist2D <= 0.6 || (dist2D <= 2.0 && stuckTicks >= 15);
+            // 1D projection check: has the player passed the waypoint line?
+            // Project the remaining vector onto the movement direction.
+            // If the dot product is negative, we've overshot the target.
+            double moveDirX = targetX - prevX;
+            double moveDirZ = targetZ - prevZ;
+            double moveDirLen = Math.sqrt(moveDirX * moveDirX + moveDirZ * moveDirZ);
+            boolean overshot = false;
+            if (moveDirLen > 0.001) {
+                // Normalize the original direction of travel
+                double ndx = moveDirX / moveDirLen;
+                double ndz = moveDirZ / moveDirLen;
+                // Dot product of remaining distance with travel direction
+                double dot = dx * ndx + dz * ndz;
+                overshot = dot <= 0.0;
+            }
+
+            boolean reached = dist2D <= 0.3 || overshot;
 
             if (reached) {
                 // Release all movement keys briefly on waypoint transition
                 stopAllKeys(mc);
                 hasTarget = false;
-                stuckTicks = 0;
                 // State transition happens below
             }
         }
+
+        prevX = playerX;
+        prevZ = playerZ;
 
         // ── If no target, pick next waypoint based on state ────────────
         if (!hasTarget) {
