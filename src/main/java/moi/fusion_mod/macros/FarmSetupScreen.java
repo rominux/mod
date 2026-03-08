@@ -97,13 +97,31 @@ public class FarmSetupScreen extends Screen {
             y += ROW_HEIGHT;
         }
 
-        // ── Done button ─────────────────────────────────────────────────
+        // ── Reload + Done buttons ───────────────────────────────────────
         y += PADDING;
-        int doneW = 120;
+        int btnW = 120;
+        int gap = 8;
+        int totalW = btnW * 2 + gap;
+        int btnStartX = (screenW - totalW) / 2;
+        int btnY = Math.min(y, screenH - 28);
+
+        this.addRenderableWidget(Button.builder(
+                Component.literal("\u00A7eReload Config"),
+                button -> {
+                    FarmConfig.load();
+                    this.init(); // Rebuild the GUI to reflect updated config
+                    Minecraft mc = Minecraft.getInstance();
+                    if (mc.player != null) {
+                        mc.player.displayClientMessage(
+                                Component.literal("\u00A7a[Farm Setup] Config reloaded — " + FarmConfig.getFarms().size() + " farm(s) loaded."), false);
+                    }
+                }
+        ).bounds(btnStartX, btnY, btnW, BUTTON_HEIGHT).build());
+
         this.addRenderableWidget(Button.builder(
                 Component.literal("Done"),
                 button -> onClose()
-        ).bounds((screenW - doneW) / 2, Math.min(y, screenH - 28), doneW, BUTTON_HEIGHT).build());
+        ).bounds(btnStartX + btnW + gap, btnY, btnW, BUTTON_HEIGHT).build());
     }
 
     @Override

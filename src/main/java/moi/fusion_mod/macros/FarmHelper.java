@@ -157,8 +157,13 @@ public class FarmHelper {
                 return;
             }
 
-            // Auto-detect the closest farm by finding the nearest start waypoint
-            if (waypoints.size() < 2 && mc.player != null) {
+            // Always re-detect the closest farm on every toggle press.
+            // This ensures the player can walk to a different farm and press the
+            // keybind again without needing to restart the mod.
+            if (mc.player != null) {
+                // Reload config from disk to pick up any external changes
+                FarmConfig.load();
+
                 String closestCrop = null;
                 double closestDist = Double.MAX_VALUE;
 
@@ -176,6 +181,10 @@ public class FarmHelper {
 
                 if (closestCrop != null && closestDist <= 5.0) {
                     loadFarmFromConfig(closestCrop);
+                } else {
+                    // Clear any previously loaded waypoints since we're not near any farm
+                    waypoints.clear();
+                    activeCropName = null;
                 }
             }
 
