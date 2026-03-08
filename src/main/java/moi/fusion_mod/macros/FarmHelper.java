@@ -15,6 +15,7 @@ import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -110,20 +111,64 @@ public class FarmHelper {
     /** Minimum time between rod swaps (5 minutes). */
     private static long lastRodSwapTime = 0;
     private static final long ROD_SWAP_COOLDOWN_MS = 5 * 60 * 1000L;
+    /**
+     * Where to go after PET_SWAPPING completes.
+     * NAVIGATING = resume farming (cooldown-triggered swap).
+     * PEST_HUNT_INIT = enter pest hunt (pest-spawn-triggered swap).
+     */
+    private static State stateAfterSwap = State.NAVIGATING;
 
     // ── Pest hunting ────────────────────────────────────────────────────
     /** Maximum ticks for the entire hunt before giving up (15 seconds). */
     private static final int HUNT_TIMEOUT_TICKS = 300;
     /** The pest entity currently being targeted during SEEK phase. */
     private static Entity huntTarget = null;
+    /** Target plot center coordinates for the FLY phase (from PLOT_COORDS). */
+    private static Vec3 targetPlotCenter = null;
+    /** Ticks spent in vacuum ability mode during SEEK (40-tick cooldown for particle capture). */
+    private static int vacuumAbilityTicks = 0;
+    /** Whether the vacuum ability has been activated this seek cycle. */
+    private static boolean vacuumAbilityUsed = false;
 
-    // ── Vacuum particle capture (kept for onParticlePacket compatibility) ──
+    // ── Vacuum particle capture (reactivated for SEEK fallback) ──
     private static final List<Vec3> particleLocations = new ArrayList<>();
     private static Vec3 firstParticlePos = null;
     private static Vec3 lastParticlePos = null;
     private static Vec3 calculatedPestPos = null;
     private static boolean collectingParticles = false;
     private static int particleCollectStartTick = 0;
+
+    // ── Hardcoded Hypixel Garden plot center coordinates ────────────────
+    // Source: FarmAuto.py PLOT_COORDS (confirmed at line 119)
+    private static final Map<String, Vec3> PLOT_COORDS = new HashMap<>();
+    static {
+        PLOT_COORDS.put("21", new Vec3(-192, 80, -192));
+        PLOT_COORDS.put("13", new Vec3(-96, 80, -192));
+        PLOT_COORDS.put("9",  new Vec3(0, 80, -192));
+        PLOT_COORDS.put("14", new Vec3(96, 80, -192));
+        PLOT_COORDS.put("22", new Vec3(192, 80, -192));
+        PLOT_COORDS.put("15", new Vec3(-192, 80, -96));
+        PLOT_COORDS.put("5",  new Vec3(-96, 80, -96));
+        PLOT_COORDS.put("1",  new Vec3(0, 80, -96));
+        PLOT_COORDS.put("6",  new Vec3(96, 80, -96));
+        PLOT_COORDS.put("16", new Vec3(192, 80, -96));
+        PLOT_COORDS.put("10", new Vec3(-192, 80, 0));
+        PLOT_COORDS.put("2",  new Vec3(-96, 80, 0));
+        PLOT_COORDS.put("Barn", new Vec3(0, 80, 0));
+        PLOT_COORDS.put("The Barn", new Vec3(0, 80, 0));
+        PLOT_COORDS.put("3",  new Vec3(96, 80, 0));
+        PLOT_COORDS.put("11", new Vec3(192, 80, 0));
+        PLOT_COORDS.put("17", new Vec3(-192, 80, 96));
+        PLOT_COORDS.put("7",  new Vec3(-96, 80, 96));
+        PLOT_COORDS.put("4",  new Vec3(0, 80, 96));
+        PLOT_COORDS.put("8",  new Vec3(96, 80, 96));
+        PLOT_COORDS.put("18", new Vec3(192, 80, 96));
+        PLOT_COORDS.put("23", new Vec3(-192, 80, 192));
+        PLOT_COORDS.put("19", new Vec3(-96, 80, 192));
+        PLOT_COORDS.put("12", new Vec3(0, 80, 192));
+        PLOT_COORDS.put("20", new Vec3(96, 80, 192));
+        PLOT_COORDS.put("24", new Vec3(192, 80, 192));
+    }
 
     // Known pest skull texture prefixes (Base64 encoded skin data)
     private static final String[] PEST_TEXTURE_PREFIXES = {
@@ -330,6 +375,10 @@ public class FarmHelper {
         pestScanCounter = 0;
         actionTicks = 0;
         huntTarget = null;
+        targetPlotCenter = null;
+        stateAfterSwap = State.NAVIGATING;
+        vacuumAbilityTicks = 0;
+        vacuumAbilityUsed = false;
         resetParticleCapture();
 
         // Set pitch from config (may be overridden by setWaypoints)
@@ -394,6 +443,10 @@ public class FarmHelper {
         pestTarget = null;
         actionTicks = 0;
         huntTarget = null;
+        targetPlotCenter = null;
+        stateAfterSwap = State.NAVIGATING;
+        vacuumAbilityTicks = 0;
+        vacuumAbilityUsed = false;
         resetParticleCapture();
         PestTracker.reset();
         if (mc.player != null) {
@@ -560,6 +613,7 @@ public class FarmHelper {
         if (startEndDist <= 2.0) {
             // ── Looping farm ───────────────────────────────────────────
             if (PestTracker.hasPests()) {
+                resolveTargetPlotCenter();
                 enterPestHuntInit(mc);
             } else {
                 // No pests — loop back to index 1 (skip start waypoint)
@@ -588,6 +642,7 @@ public class FarmHelper {
 
             // After warping, check for pests
             if (PestTracker.hasPests()) {
+                resolveTargetPlotCenter();
                 enterPestHuntInit(mc);
             } else {
                 // Restart farming from index 1
@@ -604,9 +659,14 @@ public class FarmHelper {
     /**
      * Enter pet swapping state: pause farming, cast rod, wait, return to tool.
      * Based on FarmAuto.py use_fishing_rod() logic with proper tick timing.
+     *
+     * @param afterSwap The state to transition to after the swap completes.
+     *                  Use NAVIGATING for cooldown-triggered swaps (resume farming),
+     *                  or PEST_HUNT_INIT for pest-spawn-triggered swaps (start hunting).
      */
-    private static void enterPetSwapping(Minecraft mc) {
+    private static void enterPetSwapping(Minecraft mc, State afterSwap) {
         currentState = State.PET_SWAPPING;
+        stateAfterSwap = afterSwap;
         actionTicks = 0;
         slotBeforeRodSwap = mc.player != null ? mc.player.getInventory().getSelectedSlot() : 0;
         stopAllKeys(mc);
@@ -618,12 +678,19 @@ public class FarmHelper {
     }
 
     /**
+     * Convenience overload: enter pet swapping with default resume to NAVIGATING.
+     */
+    private static void enterPetSwapping(Minecraft mc) {
+        enterPetSwapping(mc, State.NAVIGATING);
+    }
+
+    /**
      * Tick the pet swapping sequence with strict tick-based actions:
      *   Tick 1:  Release W/A/S/D and Attack. Switch Inventory.selected to the Fishing Rod.
      *   Tick 5:  keyUse.setDown(true) — right-click cast.
      *   Tick 6:  Release right-click.
      *   Tick 10: Switch Inventory.selected back to the Farming tool (Hoe).
-     *   Tick 15: Set currentState = NAVIGATING, reset actionTicks.
+     *   Tick 15: Route to stateAfterSwap (NAVIGATING or PEST_HUNT_INIT).
      */
     private static void tickPetSwapping(Minecraft mc) {
         actionTicks++;
@@ -635,14 +702,14 @@ public class FarmHelper {
             // Select fishing rod
             int rodSlot = AutoTool.selectFishingRod(mc);
             if (rodSlot < 0) {
-                // No rod found — skip and resume
+                // No rod found — skip and route to intended destination
                 if (mc.player != null) {
                     mc.player.displayClientMessage(
                             Component.literal("\u00A7eNo fishing rod found in hotbar, skipping swap."), true);
                 }
                 lastRodSwapTime = System.currentTimeMillis();
                 actionTicks = 0;
-                resumeNavigating(mc);
+                routeAfterSwap(mc);
                 return;
             }
         } else if (actionTicks == 5) {
@@ -661,9 +728,24 @@ public class FarmHelper {
                 }
             }
         } else if (actionTicks >= 15) {
-            // Done — record swap time and resume navigating
+            // Done — record swap time and route to intended state
             lastRodSwapTime = System.currentTimeMillis();
             actionTicks = 0;
+            routeAfterSwap(mc);
+        }
+    }
+
+    /**
+     * Route to the correct state after pet swap completes.
+     * If stateAfterSwap is PEST_HUNT_INIT, enter pest hunt initialization.
+     * Otherwise, resume navigating (farming).
+     */
+    private static void routeAfterSwap(Minecraft mc) {
+        State target = stateAfterSwap;
+        stateAfterSwap = State.NAVIGATING; // reset for next time
+        if (target == State.PEST_HUNT_INIT) {
+            enterPestHuntInit(mc);
+        } else {
             resumeNavigating(mc);
         }
     }
@@ -673,7 +755,7 @@ public class FarmHelper {
     // ══════════════════════════════════════════════════════════════════════
 
     /**
-     * Enter forced pest hunt: /sethome, then transition to pest hunting.
+     * Enter forced pest hunt: /sethome, then pet swap (if enabled), then hunt.
      * Called when PestTracker.forcePestHunt is set by chat interception.
      */
     private static void enterForcedPestHunt(Minecraft mc) {
@@ -684,12 +766,24 @@ public class FarmHelper {
             mc.player.connection.sendCommand("sethome");
         }
 
+        // Resolve target plot center from PestTracker data
+        resolveTargetPlotCenter();
+
         if (mc.player != null) {
+            String plotInfo = targetPlotCenter != null
+                    ? " (Plot " + PestTracker.getLastPestSpawnPlotId() + ")"
+                    : "";
             mc.player.displayClientMessage(
-                    Component.literal("\u00A7c\u00A7lPests spawned! Starting forced hunt..."), true);
+                    Component.literal("\u00A7c\u00A7lPests spawned! Starting forced hunt" + plotInfo + "..."), true);
         }
 
-        enterPestHuntInit(mc);
+        // If fishing rod swap is enabled and cooldown allows, do pet swap first
+        if (FusionConfig.isFarmHelperUseFishingRodSwap()
+                && System.currentTimeMillis() - lastRodSwapTime > ROD_SWAP_COOLDOWN_MS) {
+            enterPetSwapping(mc, State.PEST_HUNT_INIT);
+        } else {
+            enterPestHuntInit(mc);
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -813,6 +907,45 @@ public class FarmHelper {
     // ══════════════════════════════════════════════════════════════════════
 
     /**
+     * Resolve the target plot center from PestTracker data.
+     * Uses: lastPestSpawnPlotId → first infested plot → null (hunt nearby).
+     */
+    private static void resolveTargetPlotCenter() {
+        targetPlotCenter = null;
+
+        // Try the specific plot ID from chat
+        String plotId = PestTracker.getLastPestSpawnPlotId();
+        if (!plotId.isEmpty()) {
+            targetPlotCenter = getPlotCenter(plotId);
+            if (targetPlotCenter != null) return;
+        }
+
+        // Fallback: first infested plot from tab list
+        String firstInfested = PestTracker.getFirstInfestedPlot();
+        if (!firstInfested.isEmpty()) {
+            targetPlotCenter = getPlotCenter(firstInfested);
+            if (targetPlotCenter != null) return;
+        }
+
+        // Try all infested plots
+        for (String plot : PestTracker.getInfestedPlots()) {
+            targetPlotCenter = getPlotCenter(plot);
+            if (targetPlotCenter != null) return;
+        }
+        // If still null, we'll hunt wherever we are
+    }
+
+    /**
+     * Get the center coordinates of a garden plot by its ID.
+     * @param plotName The plot identifier (e.g. "5", "Barn", "The Barn")
+     * @return The center Vec3 at Y=80, or null if the plot is not recognized.
+     */
+    public static Vec3 getPlotCenter(String plotName) {
+        if (plotName == null || plotName.isEmpty()) return null;
+        return PLOT_COORDS.get(plotName.trim());
+    }
+
+    /**
      * Enter pest hunt initialization phase.
      * Stops movement, sends /sethome, switches to vacuum, waits 1 second.
      */
@@ -820,11 +953,19 @@ public class FarmHelper {
         currentState = State.PEST_HUNT_INIT;
         actionTicks = 0;
         huntTarget = null;
+        vacuumAbilityTicks = 0;
+        vacuumAbilityUsed = false;
+        resetParticleCapture();
         stopAllKeys(mc);
 
         // /sethome so we can warp back after hunting
         if (mc.player != null && mc.player.connection != null) {
             mc.player.connection.sendCommand("sethome");
+        }
+
+        // Resolve target if not already set (e.g. from handleEndOfFarm)
+        if (targetPlotCenter == null) {
+            resolveTargetPlotCenter();
         }
 
         // Equip vacuum
@@ -845,7 +986,8 @@ public class FarmHelper {
     }
 
     /**
-     * PEST_HUNT_INIT: Wait 20 ticks (1 second) after /sethome + vacuum equip, then fly.
+     * PEST_HUNT_INIT: Wait 20 ticks (1 second) after /sethome + vacuum equip,
+     * then double-jump to enable flight and transition to FLY.
      */
     private static void tickPestHuntInit(Minecraft mc) {
         actionTicks++;
@@ -858,9 +1000,20 @@ public class FarmHelper {
     }
 
     /**
-     * PEST_HUNT_FLY: Force camera straight down (pitch=90), hold jump + attack (vacuum).
-     * Double-tap jump to engage flight, then hold jump to ascend.
-     * When Y >= 79, release jump and transition to SEEK.
+     * PEST_HUNT_FLY: Double-tap jump to engage flight, then fly toward
+     * targetPlotCenter if set, or straight up if no target.
+     *
+     * Phases:
+     *   Ticks 1-2:  Jump (first press)
+     *   Tick 3:     Release jump
+     *   Tick 5:     Jump again (double-tap to enable flight)
+     *   Tick 7:     Release jump
+     *   Tick 8+:    Hold jump to ascend + navigate toward target plot
+     *
+     * Transition to SEEK when:
+     *   - Within 10 blocks horizontally of targetPlotCenter, OR
+     *   - Y >= 79 (if no target), OR
+     *   - Timeout (60 ticks = 3 seconds)
      */
     private static void tickPestHuntFly(Minecraft mc) {
         if (mc.player == null) {
@@ -871,36 +1024,12 @@ public class FarmHelper {
 
         actionTicks++;
 
-        // Force camera straight down for pest visibility
-        mc.player.setXRot(90f);
-
-        // Hold attack (vacuum left-click)
+        // Hold attack (vacuum left-click) for passive pest suction
         mc.options.keyAttack.setDown(true);
 
         double playerY = mc.player.getY();
 
-        // Check if high enough or timeout (3 seconds = 60 ticks)
-        if (playerY >= 79.0) {
-            mc.options.keyJump.setDown(false);
-            actionTicks = 0;
-            currentState = State.PEST_HUNT_SEEK;
-
-            if (mc.player != null) {
-                mc.player.displayClientMessage(
-                        Component.literal("\u00A7ePestHunter: Altitude reached, seeking pests..."), true);
-            }
-            return;
-        }
-
-        if (actionTicks > 60) {
-            // Timeout — proceed anyway
-            mc.options.keyJump.setDown(false);
-            actionTicks = 0;
-            currentState = State.PEST_HUNT_SEEK;
-            return;
-        }
-
-        // Double-tap jump to start flying (SkyBlock garden flight)
+        // ── Double-tap jump to engage flight ──────────────────────────
         if (actionTicks <= 2) {
             mc.options.keyJump.setDown(true);
         } else if (actionTicks == 3) {
@@ -912,15 +1041,76 @@ public class FarmHelper {
         } else {
             // Hold jump to ascend
             mc.options.keyJump.setDown(true);
+
+            // ── Navigate toward target plot if we have one ────────────
+            if (targetPlotCenter != null) {
+                double dx = targetPlotCenter.x - mc.player.getX();
+                double dz = targetPlotCenter.z - mc.player.getZ();
+                double horizDist = Math.sqrt(dx * dx + dz * dz);
+
+                // Aim toward the target
+                float targetYaw = (float) (Math.toDegrees(Math.atan2(-dx, dz)));
+                mc.player.setYRot(Mth.rotLerp(0.3f, mc.player.getYRot(), targetYaw));
+                mc.player.setXRot(-10f); // Slightly upward while flying
+
+                // Press W to fly forward
+                mc.options.keyUp.setDown(true);
+                mc.options.keySprint.setDown(horizDist > 20);
+
+                // Check if we're close enough to the target
+                if (horizDist <= 10.0 && playerY >= 75.0) {
+                    mc.options.keyJump.setDown(false);
+                    mc.options.keySprint.setDown(false);
+                    stopMovementKeys(mc);
+                    actionTicks = 0;
+                    currentState = State.PEST_HUNT_SEEK;
+
+                    if (mc.player != null) {
+                        mc.player.displayClientMessage(
+                                Component.literal("\u00A7ePestHunter: Arrived at plot, seeking pests..."), true);
+                    }
+                    return;
+                }
+            } else {
+                // No target — just fly up and look down
+                mc.player.setXRot(90f); // Look straight down for pest visibility
+
+                // Check altitude
+                if (playerY >= 79.0) {
+                    mc.options.keyJump.setDown(false);
+                    actionTicks = 0;
+                    currentState = State.PEST_HUNT_SEEK;
+
+                    if (mc.player != null) {
+                        mc.player.displayClientMessage(
+                                Component.literal("\u00A7ePestHunter: Altitude reached, seeking pests..."), true);
+                    }
+                    return;
+                }
+            }
+        }
+
+        // Timeout — proceed to SEEK regardless
+        if (actionTicks > 60) {
+            mc.options.keyJump.setDown(false);
+            stopMovementKeys(mc);
+            actionTicks = 0;
+            currentState = State.PEST_HUNT_SEEK;
         }
     }
 
     /**
      * PEST_HUNT_SEEK: Find nearest pest ArmorStand with skull texture.
-     * Aim at its position using smooth look. Project W/A/S/D to fly toward it.
-     * Hold keyUse (right-click vacuum suck).
      *
-     * If no pest found for 15 seconds or all pests dead, transition to RETURN.
+     * Strategy:
+     *   1. Scan for pest ArmorStands every tick.
+     *   2. If found: aim at it, fly toward it holding right-click (vacuum).
+     *   3. If NOT found but pests > 0:
+     *      a. Equip vacuum, left-click (vacuum ability) once.
+     *      b. Wait 40 ticks (2s cooldown) while collecting ANGRY_VILLAGER particles.
+     *      c. If particle chain collected: calculate pest position from extrapolation.
+     *      d. Fly toward the calculated position.
+     *   4. If all pests dead or timeout: transition to RETURN.
      */
     private static void tickPestHuntSeek(Minecraft mc) {
         if (mc.player == null) {
@@ -958,7 +1148,7 @@ public class FarmHelper {
             return;
         }
 
-        // Find nearest pest entity
+        // ── Try to find a pest entity directly ────────────────────────
         Entity pest = findNearestPest(mc);
 
         if (pest != null) {
@@ -970,7 +1160,7 @@ public class FarmHelper {
         }
 
         if (huntTarget != null) {
-            // ── Aim at the pest ────────────────────────────────────────
+            // ── Found a pest — aim and fly toward it ──────────────────
             Vec3 pestPos = new Vec3(huntTarget.getX(),
                     huntTarget.getY() + huntTarget.getEyeHeight(),
                     huntTarget.getZ());
@@ -986,17 +1176,15 @@ public class FarmHelper {
                 mc.player.setYRot(newYaw);
                 mc.player.setXRot(newPitch);
             } else {
-                // Snap to exact angle when close enough
                 mc.player.setYRot(angle.x);
                 mc.player.setXRot(angle.y);
             }
 
-            // ── Move toward the pest using vector projection ───────────
+            // Move toward the pest using vector projection on current camera
             double dx = huntTarget.getX() - mc.player.getX();
             double dz = huntTarget.getZ() - mc.player.getZ();
             double dist2D = Math.sqrt(dx * dx + dz * dz);
 
-            // Compute forward/right relative to current camera yaw for movement
             double moveRad = Math.toRadians(mc.player.getYRot());
             double moveFx = -Math.sin(moveRad);
             double moveFz = Math.cos(moveRad);
@@ -1007,27 +1195,109 @@ public class FarmHelper {
             double rightDot = dx * moveRx + dz * moveRz;
 
             if (dist2D > 4.0) {
-                // Walk toward pest
                 mc.options.keyUp.setDown(fwdDot > 0.3);
                 mc.options.keyDown.setDown(fwdDot < -0.3);
                 mc.options.keyRight.setDown(rightDot > 0.3);
                 mc.options.keyLeft.setDown(rightDot < -0.3);
                 mc.options.keySprint.setDown(dist2D > 10);
             } else {
-                // Close enough — stop movement, just vacuum
                 stopMovementKeys(mc);
             }
+
+            // Adjust altitude to match pest
+            double dy = huntTarget.getY() - mc.player.getY();
+            mc.options.keyJump.setDown(dy > 1.5);
+            mc.options.keyShift.setDown(dy < -2.0);
 
             // Hold right-click (vacuum suction)
             mc.options.keyUse.setDown(true);
 
-        } else {
-            // No pest found — slowly spin to scan surroundings
-            float scanYaw = mc.player.getYRot() + 3.0f; // 3 degrees per tick
-            mc.player.setYRot(scanYaw);
-            mc.player.setXRot(15f); // Slightly downward to see ground pests
+            // Stop collecting particles — we found the pest directly
+            collectingParticles = false;
 
-            // Keep vacuum clicking
+        } else if (calculatedPestPos != null) {
+            // ── Particle-calculated pest position — fly toward it ─────
+            Vec3 target = calculatedPestPos;
+            double dx = target.x - mc.player.getX();
+            double dz = target.z - mc.player.getZ();
+            double dist2D = Math.sqrt(dx * dx + dz * dz);
+
+            // Aim toward calculated position
+            float targetYaw = (float) (Math.toDegrees(Math.atan2(-dx, dz)));
+            mc.player.setYRot(Mth.rotLerp(0.3f, mc.player.getYRot(), targetYaw));
+            mc.player.setXRot(30f); // Look slightly down
+
+            if (dist2D > 3.0) {
+                mc.options.keyUp.setDown(true);
+                mc.options.keySprint.setDown(dist2D > 15);
+            } else {
+                stopMovementKeys(mc);
+                // We arrived at the calculated position — clear it and
+                // let the next cycle try to find the pest entity or re-use vacuum
+                calculatedPestPos = null;
+                vacuumAbilityUsed = false;
+            }
+
+            mc.options.keyUse.setDown(true);
+
+        } else {
+            // ── No pest found and no calculated position ──────────────
+            // Try vacuum ability for particle capture
+
+            if (!vacuumAbilityUsed) {
+                // Activate vacuum ability: ensure vacuum is equipped, then left-click
+                AutoTool.selectVacuum(mc);
+                mc.options.keyAttack.setDown(true);
+                vacuumAbilityUsed = true;
+                vacuumAbilityTicks = 0;
+                collectingParticles = true;
+                resetParticleCapture();
+                collectingParticles = true; // re-enable after reset
+            }
+
+            vacuumAbilityTicks++;
+
+            if (vacuumAbilityTicks <= 5) {
+                // Hold left-click for a few ticks to trigger the ability
+                mc.options.keyAttack.setDown(true);
+            } else {
+                mc.options.keyAttack.setDown(false);
+            }
+
+            // Wait 40 ticks (2 seconds) for particles to appear
+            if (vacuumAbilityTicks >= 40) {
+                collectingParticles = false;
+
+                // Analyze particle chain
+                if (particleLocations.size() >= 3 && firstParticlePos != null && lastParticlePos != null) {
+                    // Extrapolate from particle chain direction
+                    Vec3 direction = lastParticlePos.subtract(firstParticlePos).normalize();
+                    double chainLength = firstParticlePos.distanceTo(lastParticlePos);
+                    // Extend the chain by 2x its length to estimate pest position
+                    double extendDist = Math.max(chainLength * 2.0, 10.0);
+                    calculatedPestPos = lastParticlePos.add(
+                            direction.x * extendDist,
+                            direction.y * extendDist,
+                            direction.z * extendDist
+                    );
+
+                    if (mc.player != null) {
+                        mc.player.displayClientMessage(
+                                Component.literal("\u00A7ePestHunter: Particle trail detected! Flying to estimated position..."), true);
+                    }
+                } else {
+                    // No useful particles — reset and try again after a brief scan
+                    vacuumAbilityUsed = false; // Allow retrying
+                    vacuumAbilityTicks = 0;
+
+                    // Slowly spin to scan surroundings
+                    float scanYaw = mc.player.getYRot() + 3.0f;
+                    mc.player.setYRot(scanYaw);
+                    mc.player.setXRot(15f);
+                }
+            }
+
+            // Hold right-click vacuum while waiting
             mc.options.keyUse.setDown(true);
             stopMovementKeys(mc);
         }
@@ -1051,6 +1321,10 @@ public class FarmHelper {
         if (actionTicks >= 60) { // 3 seconds
             actionTicks = 0;
             huntTarget = null;
+            targetPlotCenter = null;
+            vacuumAbilityTicks = 0;
+            vacuumAbilityUsed = false;
+            resetParticleCapture();
 
             // Restart farming from index 1 (we warped to garden home)
             currentWaypointIndex = 1;
@@ -1163,7 +1437,7 @@ public class FarmHelper {
     // Key Simulation Utilities
     // ══════════════════════════════════════════════════════════════════════
 
-    /** Release all keys including attack, use, sprint, jump. */
+    /** Release all keys including attack, use, sprint, jump, sneak. */
     private static void stopAllKeys(Minecraft mc) {
         mc.options.keyUp.setDown(false);
         mc.options.keyDown.setDown(false);
@@ -1173,6 +1447,7 @@ public class FarmHelper {
         mc.options.keyAttack.setDown(false);
         mc.options.keyUse.setDown(false);
         mc.options.keyJump.setDown(false);
+        mc.options.keyShift.setDown(false);
     }
 
     /** Release only movement keys (up/down/left/right/sprint), keep attack/use untouched. */

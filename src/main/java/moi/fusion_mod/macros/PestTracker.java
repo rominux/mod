@@ -38,17 +38,21 @@ public class PestTracker {
     private static final Pattern INFESTED_PLOTS_TAB_PATTERN =
             Pattern.compile("\\s*Plots:\\s*(.+)");
 
-    /** Tab list: pest bonus/cooldown timer, e.g. "Next Pest: 5m 2s" or "Pest Bonus: 1m 30s" */
+    /** Tab list: pest bonus/cooldown timer, e.g. "Next Pest: 5m 2s", "Cooldown: READY" */
     private static final Pattern PEST_COOLDOWN_TAB_PATTERN =
-            Pattern.compile("(?:Next Pest|Pest Bonus|Pest Cooldown):\\s*(.+)");
+            Pattern.compile("(?:Next Pest|Pest Bonus|Pest Cooldown|Cooldown):\\s*(.+)");
 
-    /** Chat message: "§6§lWARNING! §r§cA Pest has appeared in Plot - §r§e[Melon]§r§c!" */
+    /** Chat message: "A Pest has appeared in Plot - [Melon]!" — captures crop name in brackets */
     private static final Pattern PEST_SPAWN_CHAT_PATTERN =
             Pattern.compile(".*(?:Pest|Pests).*(?:appeared|spawned).*Plot.*\\[(.+?)].*");
 
-    /** Chat message: "ൠ Pests have spawned in Plots 1, 3, 5!" */
+    /** Chat message: "Pests have spawned in Plots 1, 3, 5!" — captures plot number(s) */
     private static final Pattern PEST_SPAWN_PLOTS_CHAT_PATTERN =
             Pattern.compile(".*(?:Pest|Pests).*spawned.*Plot[s]?\\s+(.+?)!");
+
+    /** Chat message: "A Pest has appeared in Plot 5!" — captures numeric plot id directly */
+    private static final Pattern PEST_SPAWN_PLOT_NUMBER_PATTERN =
+            Pattern.compile(".*(?:Pest|Pests).*(?:appeared|spawned).*Plot\\s+(\\d+).*");
 
     // ══════════════════════════════════════════════════════════════════════
     // State
@@ -71,6 +75,13 @@ public class PestTracker {
 
     /** Last plot name from pest spawn chat. */
     private static String lastPestSpawnPlot = "";
+
+    /**
+     * Last pest spawn plot resolved to a numeric plot ID (e.g. "5").
+     * This may be set from chat messages like "Plot 5!" directly,
+     * or resolved from crop name + infested plots list.
+     */
+    private static String lastPestSpawnPlotId = "";
 
     /** Pest cooldown/bonus timer string from tab list (e.g. "5m 2s" or "READY"). */
     private static String pestCooldownTimer = "";
@@ -116,6 +127,19 @@ public class PestTracker {
     /** Get the last plot where a pest was reported via chat. */
     public static String getLastPestSpawnPlot() {
         return lastPestSpawnPlot;
+    }
+
+    /** Get the last pest spawn plot as a numeric plot ID (e.g. "5"), or empty if unknown. */
+    public static String getLastPestSpawnPlotId() {
+        return lastPestSpawnPlotId;
+    }
+
+    /**
+     * Get the first infested plot ID from the tab list (used as fallback
+     * when chat doesn't give us a specific plot number).
+     */
+    public static String getFirstInfestedPlot() {
+        return infestedPlots.isEmpty() ? "" : infestedPlots.get(0);
     }
 
     /** Get timestamp of last pest spawn chat message. */
@@ -254,9 +278,10 @@ public class PestTracker {
         // If no cooldown line found in tab, clear the timer
         if (!foundCooldown) {
             pestCooldownTimer = "";
-            // If there's no cooldown line at all, treat as ready
-            // (the line only shows when there IS a cooldown running)
-            pestCooldownReady = true;
+            // If there's no cooldown line at all, assume NOT ready (safe default
+            // to prevent constant pet swap triggers). The line appears when
+            // cooldown is active; when it shows "READY" we catch it above.
+            pestCooldownReady = false;
         }
 
         // If tab list has a pest count, use it as a fallback/override
@@ -277,20 +302,36 @@ public class PestTracker {
     public static void onChatMessage(String message) {
         String stripped = message.replaceAll("\u00A7.", "").trim();
 
-        // "A Pest has appeared in Plot - [Melon]!"
-        Matcher m = PEST_SPAWN_CHAT_PATTERN.matcher(stripped);
-        if (m.matches()) {
-            lastPestSpawnPlot = m.group(1).trim();
+        // "A Pest has appeared in Plot 5!" — direct numeric plot
+        Matcher m3 = PEST_SPAWN_PLOT_NUMBER_PATTERN.matcher(stripped);
+        if (m3.matches()) {
+            lastPestSpawnPlotId = m3.group(1).trim();
+            lastPestSpawnPlot = lastPestSpawnPlotId;
             lastPestSpawnTime = System.currentTimeMillis();
             forcePestHunt = true;
             return;
         }
 
-        // "Pests have spawned in Plots 1, 3, 5!"
+        // "A Pest has appeared in Plot - [Melon]!" — crop name in brackets
+        Matcher m = PEST_SPAWN_CHAT_PATTERN.matcher(stripped);
+        if (m.matches()) {
+            lastPestSpawnPlot = m.group(1).trim();
+            lastPestSpawnTime = System.currentTimeMillis();
+            // We got the crop name, not the plot number — set plotId from
+            // the first infested plot in the tab list as a fallback
+            lastPestSpawnPlotId = getFirstInfestedPlot();
+            forcePestHunt = true;
+            return;
+        }
+
+        // "Pests have spawned in Plots 1, 3, 5!" — multiple plots
         Matcher m2 = PEST_SPAWN_PLOTS_CHAT_PATTERN.matcher(stripped);
         if (m2.matches()) {
             lastPestSpawnPlot = m2.group(1).trim();
             lastPestSpawnTime = System.currentTimeMillis();
+            // Extract the first plot number from the list
+            String[] parts = lastPestSpawnPlot.split("[,\\s]+");
+            lastPestSpawnPlotId = parts.length > 0 ? parts[0].trim() : "";
             forcePestHunt = true;
         }
     }
@@ -305,6 +346,7 @@ public class PestTracker {
         infestedPlots.clear();
         lastPestSpawnTime = 0;
         lastPestSpawnPlot = "";
+        lastPestSpawnPlotId = "";
         pestCooldownTimer = "";
         pestCooldownReady = false;
         forcePestHunt = false;
