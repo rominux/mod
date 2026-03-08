@@ -1,6 +1,7 @@
 package moi.fusion_mod.ui.hud;
 
 import moi.fusion_mod.config.FusionConfig;
+import moi.fusion_mod.macros.PestTracker;
 import moi.fusion_mod.ui.layout.JarvisGuiManager;
 import moi.fusion_mod.waypoints.WaypointRenderer;
 import net.minecraft.client.Minecraft;
@@ -864,7 +865,7 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
         result = result.replace("{spray}",
                 FusionConfig.isGardenShowSpray() ? sprayInfo : "");
         result = result.replace("{pest_cooldown}",
-                FusionConfig.isGardenShowSpray() ? sprayInfo : ""); // Legacy compat
+                FusionConfig.isGardenShowPests() ? resolvePestCooldown() : "");
         result = result.replace("{visitors}",
                 FusionConfig.isGardenShowVisitors() ? resolveVisitors() : "");
         result = result.replace("{jacob_timer}",
@@ -924,6 +925,21 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
     }
 
     /**
+     * Resolve pest cooldown placeholder from PestTracker data.
+     * Returns "READY" (green) when cooldown is done, or the timer string.
+     */
+    private String resolvePestCooldown() {
+        String timer = PestTracker.getPestCooldownTimer();
+        if (timer.isEmpty()) {
+            return PestTracker.isPestCooldownReady() ? "\u00A7aREADY" : "";
+        }
+        if (PestTracker.isPestCooldownReady()) {
+            return "\u00A7aREADY";
+        }
+        return timer;
+    }
+
+    /**
      * Compute greenhouse timer display from stored target time.
      */
     private String resolveGreenhouseTimer() {
@@ -977,6 +993,10 @@ public class ZoneInfoHud implements JarvisGuiManager.JarvisHud {
         if (resolved.contains("Commissions:")) return 0xFFFFAA00;
         // Pests alive (red for danger)
         if (template.contains("{pests_alive}") && pestsAlive > 0) return 0xFFFF5555;
+        // Pest cooldown (green if ready, yellow if counting down)
+        if (template.contains("{pest_cooldown}")) {
+            return PestTracker.isPestCooldownReady() ? 0xFF55FF55 : 0xFFFFFF55;
+        }
         // Jacob timer
         if (template.contains("{jacob_timer}")) return 0xFFFFAA00;
         // Visitors

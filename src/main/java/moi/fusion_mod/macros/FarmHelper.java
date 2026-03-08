@@ -51,11 +51,15 @@ public class FarmHelper {
         /** New vacuum-particle-based pest hunting with sub-phases. */
         PEST_HUNTING,
         /** Waiting for /warp garden teleport after linear farm end. */
-        WARPING
+        WARPING,
+        /** Casting fishing rod for pet swap (pest cooldown ready). */
+        FISHING_ROD_SWAP
     }
 
     /** Sub-phases for the PEST_HUNTING state. */
     private enum HuntPhase {
+        /** Fly up above crops for better vantage point. */
+        FLY_UP,
         /** Equip vacuum and prepare. */
         EQUIP_VACUUM,
         /** Left-click to trigger particle trail from server. */
@@ -139,6 +143,15 @@ public class FarmHelper {
     // ── Warping state (linear farm end) ─────────────────────────────────
     private static int warpTicks = 0;
     private static final int WARP_WAIT_DURATION = 60; // 3 seconds to teleport
+
+    // ── Fishing rod swap state ──────────────────────────────────────────
+    /** Tick counter within the FISHING_ROD_SWAP state. */
+    private static int fishingRodSwapTicks = 0;
+    /** The hotbar slot the player was using before the rod swap. */
+    private static int slotBeforeRodSwap = 0;
+    /** Minimum time between rod swaps (5 minutes in ticks = 6000). */
+    private static long lastRodSwapTime = 0;
+    private static final long ROD_SWAP_COOLDOWN_MS = 5 * 60 * 1000L;
 
     // Known pest skull texture prefixes (Base64 encoded skin data)
     private static final String[] PEST_TEXTURE_PREFIXES = {
@@ -268,10 +281,10 @@ public class FarmHelper {
         // ── Pest scanning (every PEST_SCAN_INTERVAL ticks) ─────────────
         // Uses PestTracker for counts + old skull scanning as fallback
         pestScanCounter++;
-        if (pestScanCounter >= PEST_SCAN_INTERVAL) {
+        if (FusionConfig.isFarmHelperAllowPestKilling() && pestScanCounter >= PEST_SCAN_INTERVAL) {
             pestScanCounter = 0;
             if (currentState != State.PEST_KILLING && currentState != State.PEST_HUNTING
-                    && currentState != State.WARPING) {
+                    && currentState != State.WARPING && currentState != State.FISHING_ROD_SWAP) {
                 // Check PestTracker first (tablist/scoreboard data)
                 if (PestTracker.hasPests()) {
                     // Try to find a nearby pest entity for direct targeting
@@ -319,6 +332,9 @@ public class FarmHelper {
                 break;
             case WARPING:
                 tickWarping(mc);
+                break;
+            case FISHING_ROD_SWAP:
+                tickFishingRodSwap(mc);
                 break;
             default:
                 tickNavigating(mc);
@@ -368,8 +384,9 @@ public class FarmHelper {
             prevZ = mc.player.getZ();
         }
 
-        // TASK 1: Force /sethome on enable so we can warp back
-        if (mc.player != null && mc.player.connection != null) {
+        // Force /sethome on enable if configured
+        if (FusionConfig.isFarmHelperSethomeOnStart()
+                && mc.player != null && mc.player.connection != null) {
             mc.player.connection.sendCommand("sethome");
         }
 
@@ -401,6 +418,7 @@ public class FarmHelper {
         dropDelayTicks = 0;
         pestTarget = null;
         huntAttempts = 0;
+        fishingRodSwapTicks = 0;
         resetParticleCapture();
         PestTracker.reset();
         if (mc.player != null) {
@@ -427,6 +445,21 @@ public class FarmHelper {
     // ══════════════════════════════════════════════════════════════════════
 
     private static void tickNavigating(Minecraft mc) {
+        // ── Check fishing rod swap (pest cooldown ready) ────────────────
+        if (FusionConfig.isFarmHelperUseFishingRodSwap()
+                && PestTracker.isPestCooldownReady()
+                && System.currentTimeMillis() - lastRodSwapTime > ROD_SWAP_COOLDOWN_MS) {
+            enterFishingRodSwap(mc);
+            return;
+        }
+
+        // ── Check forcePestHunt flag from chat interception ─────────────
+        if (FusionConfig.isFarmHelperAllowPestKilling() && PestTracker.forcePestHunt) {
+            PestTracker.forcePestHunt = false;
+            enterForcedPestHunt(mc);
+            return;
+        }
+
         // ── Enforce fixed camera orientation ────────────────────────────
         mc.player.setYRot(yaw);
         mc.player.setXRot(pitch);
@@ -552,7 +585,114 @@ public class FarmHelper {
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    // Turn Delay — Kill momentum between waypoints (4 ticks = 0.2s)
+    // Fishing Rod Swap — Cast fishing rod for pet swap when pest CD is ready
+    // ══════════════════════════════════════════════════════════════════════
+
+    /**
+     * Enter fishing rod swap state: pause farming, cast rod, wait, return to tool.
+     * Based on FarmAuto.py use_fishing_rod() logic.
+     */
+    private static void enterFishingRodSwap(Minecraft mc) {
+        stateBeforePest = currentState;
+        currentState = State.FISHING_ROD_SWAP;
+        fishingRodSwapTicks = 0;
+        slotBeforeRodSwap = mc.player != null ? mc.player.getInventory().getSelectedSlot() : 0;
+        stopAllKeys(mc);
+
+        if (mc.player != null) {
+            mc.player.displayClientMessage(
+                    Component.literal("\u00A7bFarmHelper: Casting fishing rod for pet swap..."), true);
+        }
+    }
+
+    /**
+     * Tick the fishing rod swap sequence:
+     *   Tick 0: Select fishing rod
+     *   Tick 4: Right-click (cast)
+     *   Tick 6: Release right-click
+     *   Tick 10: Switch back to farming tool, resume
+     */
+    private static void tickFishingRodSwap(Minecraft mc) {
+        fishingRodSwapTicks++;
+
+        if (fishingRodSwapTicks == 1) {
+            // Select fishing rod
+            int rodSlot = AutoTool.selectFishingRod(mc);
+            if (rodSlot < 0) {
+                // No rod found — skip and resume
+                if (mc.player != null) {
+                    mc.player.displayClientMessage(
+                            Component.literal("\u00A7eNo fishing rod found in hotbar, skipping swap."), true);
+                }
+                lastRodSwapTime = System.currentTimeMillis();
+                exitFishingRodSwap(mc);
+                return;
+            }
+        } else if (fishingRodSwapTicks == 4) {
+            // Right-click to cast
+            mc.options.keyUse.setDown(true);
+        } else if (fishingRodSwapTicks == 6) {
+            // Release right-click
+            mc.options.keyUse.setDown(false);
+        } else if (fishingRodSwapTicks >= 10) {
+            // Done — record swap time and resume
+            lastRodSwapTime = System.currentTimeMillis();
+            exitFishingRodSwap(mc);
+        }
+    }
+
+    /**
+     * Exit fishing rod swap and return to farming.
+     */
+    private static void exitFishingRodSwap(Minecraft mc) {
+        // Re-select farming tool
+        if (activeCropName != null) {
+            AutoTool.selectToolForCrop(mc, activeCropName);
+        } else {
+            // Fallback: restore previous slot
+            if (mc.player != null) {
+                mc.player.getInventory().setSelectedSlot(slotBeforeRodSwap);
+            }
+        }
+
+        // Restore farming camera
+        if (mc.player != null) {
+            mc.player.setYRot(yaw);
+            mc.player.setXRot(pitch);
+        }
+
+        // Resume previous state
+        currentState = (stateBeforePest != State.FISHING_ROD_SWAP
+                && stateBeforePest != State.NONE)
+                ? stateBeforePest : State.NAVIGATING;
+
+        // Re-enable attack for farming
+        mc.options.keyAttack.setDown(true);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Forced Pest Hunt — Triggered by chat "Pests have spawned"
+    // ══════════════════════════════════════════════════════════════════════
+
+    /**
+     * Enter forced pest hunt: /sethome, then transition to pest hunting.
+     * Called when PestTracker.forcePestHunt is set by chat interception.
+     */
+    private static void enterForcedPestHunt(Minecraft mc) {
+        stopAllKeys(mc);
+
+        // /sethome before leaving to hunt so we can warp back
+        if (mc.player != null && mc.player.connection != null) {
+            mc.player.connection.sendCommand("sethome");
+        }
+
+        if (mc.player != null) {
+            mc.player.displayClientMessage(
+                    Component.literal("\u00A7c\u00A7lPests spawned! Starting forced hunt..."), true);
+        }
+
+        enterPestHunting(mc);
+    }
     // ══════════════════════════════════════════════════════════════════════
 
     private static void tickTurnDelay(Minecraft mc) {
@@ -670,14 +810,14 @@ public class FarmHelper {
             stateBeforePest = currentState;
         }
         currentState = State.PEST_HUNTING;
-        huntPhase = HuntPhase.EQUIP_VACUUM;
+        huntPhase = HuntPhase.FLY_UP;
         huntTicks = 0;
         resetParticleCapture();
         stopAllKeys(mc);
 
         if (mc.player != null) {
             mc.player.displayClientMessage(
-                    Component.literal("\u00A7ePestHunter: Pests detected! Starting hunt..."), true);
+                    Component.literal("\u00A7ePestHunter: Pests detected! Flying up to hunt..."), true);
         }
     }
 
@@ -727,6 +867,9 @@ public class FarmHelper {
         }
 
         switch (huntPhase) {
+            case FLY_UP:
+                tickHuntFlyUp(mc);
+                break;
             case EQUIP_VACUUM:
                 tickHuntEquipVacuum(mc);
                 break;
@@ -745,6 +888,43 @@ public class FarmHelper {
             case VACUUM_PEST:
                 tickHuntVacuumPest(mc);
                 break;
+        }
+    }
+
+    /**
+     * Phase 0: Fly up above crops (target Y ~79) for better pest visibility.
+     * Based on FarmAuto.py ascend_to_79().
+     * Uses double-jump (space tap) to engage creative-like flight in SkyBlock Garden.
+     */
+    private static void tickHuntFlyUp(Minecraft mc) {
+        if (mc.player == null) {
+            huntPhase = HuntPhase.EQUIP_VACUUM;
+            return;
+        }
+
+        double playerY = mc.player.getY();
+
+        // Target altitude: Y=79 (above most garden crops)
+        if (playerY >= 79.0 || huntTicks > 60) {
+            // High enough or timeout — proceed to equip vacuum
+            mc.options.keyJump.setDown(false);
+            huntPhase = HuntPhase.EQUIP_VACUUM;
+            huntTicks = 0; // Reset for next phase timing
+            return;
+        }
+
+        // Double-tap jump to start flying (SkyBlock garden flight)
+        if (huntTicks <= 2) {
+            mc.options.keyJump.setDown(true);
+        } else if (huntTicks == 3) {
+            mc.options.keyJump.setDown(false);
+        } else if (huntTicks == 5) {
+            mc.options.keyJump.setDown(true);
+        } else if (huntTicks == 7) {
+            mc.options.keyJump.setDown(false);
+        } else {
+            // Hold jump to ascend
+            mc.options.keyJump.setDown(true);
         }
     }
 
@@ -1014,16 +1194,29 @@ public class FarmHelper {
 
     /**
      * Exit pest killing/hunting and return to farming.
+     * After pest hunting, /warp garden and wait 2-3s before resuming NAVIGATING.
      */
     private static void exitPestState(Minecraft mc) {
         pestTarget = null;
         resetParticleCapture();
         stopAllKeys(mc);
 
-        currentState = (stateBeforePest != State.PEST_KILLING
-                && stateBeforePest != State.PEST_HUNTING
-                && stateBeforePest != State.NONE)
-                ? stateBeforePest : State.NAVIGATING;
+        // If we were pest hunting (full hunt mode), warp back to garden and resume
+        if (stateBeforePest == State.NAVIGATING || stateBeforePest == State.TURN_DELAY
+                || stateBeforePest == State.DROP_DELAY) {
+            // Warp back to the farm start (sethome was set before or on enable)
+            if (mc.player != null && mc.player.connection != null) {
+                mc.player.connection.sendCommand("warp garden");
+            }
+            warpTicks = 0;
+            currentState = State.WARPING;
+        } else {
+            currentState = (stateBeforePest != State.PEST_KILLING
+                    && stateBeforePest != State.PEST_HUNTING
+                    && stateBeforePest != State.FISHING_ROD_SWAP
+                    && stateBeforePest != State.NONE)
+                    ? stateBeforePest : State.NAVIGATING;
+        }
         stuckTicks = 0;
 
         // Re-select farming tool for the active crop

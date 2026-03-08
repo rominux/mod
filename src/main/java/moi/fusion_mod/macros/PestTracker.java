@@ -38,6 +38,10 @@ public class PestTracker {
     private static final Pattern INFESTED_PLOTS_TAB_PATTERN =
             Pattern.compile("\\s*Plots:\\s*(.+)");
 
+    /** Tab list: pest bonus/cooldown timer, e.g. "Next Pest: 5m 2s" or "Pest Bonus: 1m 30s" */
+    private static final Pattern PEST_COOLDOWN_TAB_PATTERN =
+            Pattern.compile("(?:Next Pest|Pest Bonus|Pest Cooldown):\\s*(.+)");
+
     /** Chat message: "§6§lWARNING! §r§cA Pest has appeared in Plot - §r§e[Melon]§r§c!" */
     private static final Pattern PEST_SPAWN_CHAT_PATTERN =
             Pattern.compile(".*(?:Pest|Pests).*(?:appeared|spawned).*Plot.*\\[(.+?)].*");
@@ -67,6 +71,18 @@ public class PestTracker {
 
     /** Last plot name from pest spawn chat. */
     private static String lastPestSpawnPlot = "";
+
+    /** Pest cooldown/bonus timer string from tab list (e.g. "5m 2s" or "READY"). */
+    private static String pestCooldownTimer = "";
+
+    /** Whether the pest cooldown has reached 0 (ready for fishing rod swap). */
+    private static boolean pestCooldownReady = false;
+
+    /**
+     * Flag set by chat interception when "Pests have spawned" is detected.
+     * Read and cleared by FarmHelper to trigger immediate pest hunting.
+     */
+    public static volatile boolean forcePestHunt = false;
 
     // ══════════════════════════════════════════════════════════════════════
     // Public API
@@ -105,6 +121,16 @@ public class PestTracker {
     /** Get timestamp of last pest spawn chat message. */
     public static long getLastPestSpawnTime() {
         return lastPestSpawnTime;
+    }
+
+    /** Get the pest cooldown timer string (e.g. "5m 2s" or "READY" or empty). */
+    public static String getPestCooldownTimer() {
+        return pestCooldownTimer;
+    }
+
+    /** Check if the pest cooldown has reached 0 (ready for next pest spawn / rod swap). */
+    public static boolean isPestCooldownReady() {
+        return pestCooldownReady;
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -175,6 +201,7 @@ public class PestTracker {
 
         Collection<PlayerInfo> entries = mc.player.connection.getListedOnlinePlayers();
         int tabPestCount = -1; // -1 means not found in tab
+        boolean foundCooldown = false;
 
         for (PlayerInfo info : entries) {
             Component displayName = info.getTabListDisplayName();
@@ -206,6 +233,30 @@ public class PestTracker {
                     }
                 }
             }
+
+            // "Next Pest: 5m 2s" or "Pest Bonus: 1m 30s"
+            Matcher cooldownMatcher = PEST_COOLDOWN_TAB_PATTERN.matcher(text);
+            if (cooldownMatcher.find()) {
+                String timerStr = cooldownMatcher.group(1).trim();
+                pestCooldownTimer = timerStr;
+                foundCooldown = true;
+
+                // Determine if cooldown is "ready" (0s, empty, or READY/Done keywords)
+                String lower = timerStr.toLowerCase();
+                pestCooldownReady = lower.isEmpty()
+                        || lower.equals("0s")
+                        || lower.contains("ready")
+                        || lower.contains("done")
+                        || lower.equals("0");
+            }
+        }
+
+        // If no cooldown line found in tab, clear the timer
+        if (!foundCooldown) {
+            pestCooldownTimer = "";
+            // If there's no cooldown line at all, treat as ready
+            // (the line only shows when there IS a cooldown running)
+            pestCooldownReady = true;
         }
 
         // If tab list has a pest count, use it as a fallback/override
@@ -231,6 +282,7 @@ public class PestTracker {
         if (m.matches()) {
             lastPestSpawnPlot = m.group(1).trim();
             lastPestSpawnTime = System.currentTimeMillis();
+            forcePestHunt = true;
             return;
         }
 
@@ -239,6 +291,7 @@ public class PestTracker {
         if (m2.matches()) {
             lastPestSpawnPlot = m2.group(1).trim();
             lastPestSpawnTime = System.currentTimeMillis();
+            forcePestHunt = true;
         }
     }
 
@@ -252,5 +305,8 @@ public class PestTracker {
         infestedPlots.clear();
         lastPestSpawnTime = 0;
         lastPestSpawnPlot = "";
+        pestCooldownTimer = "";
+        pestCooldownReady = false;
+        forcePestHunt = false;
     }
 }

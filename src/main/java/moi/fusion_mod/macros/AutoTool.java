@@ -179,4 +179,25 @@ public class AutoTool {
         if (stack.isEmpty()) return false;
         return stack.getHoverName().getString().contains("Vacuum");
     }
+
+    /**
+     * Scan the hotbar and select a Fishing Rod.
+     * Looks for items with "Rod" in the display name.
+     * Returns the slot index if found and selected, or -1 if not found.
+     */
+    public static int selectFishingRod(Minecraft mc) {
+        if (mc.player == null) return -1;
+
+        for (int slot = 0; slot < 9; slot++) {
+            ItemStack stack = mc.player.getInventory().getItem(slot);
+            if (stack.isEmpty()) continue;
+            String name = stack.getHoverName().getString();
+            if (name.contains("Rod")) {
+                mc.player.getInventory().setSelectedSlot(slot);
+                return slot;
+            }
+        }
+
+        return -1;
+    }
 }

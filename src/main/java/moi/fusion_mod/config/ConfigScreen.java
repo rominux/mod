@@ -139,13 +139,23 @@ public class ConfigScreen extends Screen {
                 FusionConfig::isHubShowGodPot, FusionConfig::setHubShowGodPot));
         categories.put("Hub", hub);
 
-        // ── Macros ──
-        List<ToggleOption> macros = new ArrayList<>();
-        macros.add(new ToggleOption("Auto Miner", "Toggle auto-mining nearby configured blocks",
+        // ── MiningHelper ──
+        List<ToggleOption> miningHelper = new ArrayList<>();
+        miningHelper.add(new ToggleOption("Auto Miner", "Toggle auto-mining nearby configured blocks",
                 FusionConfig::isAutoMinerEnabled, FusionConfig::setAutoMinerEnabled));
-        macros.add(new ToggleOption("Farm Helper", "Toggle automatic farming macro",
+        categories.put("MiningHelper", miningHelper);
+
+        // ── FarmHelper ──
+        List<ToggleOption> farmHelper = new ArrayList<>();
+        farmHelper.add(new ToggleOption("Farm Helper", "Toggle automatic farming macro",
                 FusionConfig::isFarmHelperEnabled, FusionConfig::setFarmHelperEnabled));
-        categories.put("Macros", macros);
+        farmHelper.add(new ToggleOption("Allow Pest Killing", "Auto-hunt pests when detected during farming",
+                FusionConfig::isFarmHelperAllowPestKilling, FusionConfig::setFarmHelperAllowPestKilling));
+        farmHelper.add(new ToggleOption("Sethome On Start", "Run /sethome when enabling FarmHelper",
+                FusionConfig::isFarmHelperSethomeOnStart, FusionConfig::setFarmHelperSethomeOnStart));
+        farmHelper.add(new ToggleOption("Fishing Rod Swap", "Cast fishing rod for pet swap when pest cooldown is ready",
+                FusionConfig::isFarmHelperUseFishingRodSwap, FusionConfig::setFarmHelperUseFishingRodSwap));
+        categories.put("FarmHelper", farmHelper);
 
         // ── Solvers ──
         List<ToggleOption> solvers = new ArrayList<>();
@@ -207,9 +217,9 @@ public class ConfigScreen extends Screen {
                 optionY += BUTTON_HEIGHT + OPTION_PADDING + 12; // extra space for description
             }
 
-            // ── Auto-Miner Priority List (Macros category only) ──────────
+            // ── Auto-Miner Priority List (MiningHelper category only) ──────────
             addBlockField = null;
-            if ("Macros".equals(selectedCategory)) {
+            if ("MiningHelper".equals(selectedCategory)) {
                 optionY += 8; // extra spacing before the priority list section
 
                 List<String> blockList = FusionConfig.getAutoMinerBlocks();
@@ -297,9 +307,11 @@ public class ConfigScreen extends Screen {
                             }
                         }
                 ).bounds(optionX + fieldW + 4, addRowY, addBtnW, BUTTON_HEIGHT).build());
+            }
 
-                // ── Farm Setup button ───────────────────────────────────
-                int farmSetupY = addRowY + BUTTON_HEIGHT + 16;
+            // ── Farm Setup button (FarmHelper category only) ────────────
+            if ("FarmHelper".equals(selectedCategory)) {
+                int farmSetupY = optionY + 8;
                 int farmSetupW = 160;
                 this.addRenderableWidget(Button.builder(
                         Component.literal("\u00A7eFarm Setup"),
@@ -361,8 +373,8 @@ public class ConfigScreen extends Screen {
                     optionY += BUTTON_HEIGHT + OPTION_PADDING + 12;
                 }
 
-                // ── Auto-Miner Priority List rendering (Macros category) ──
-                if ("Macros".equals(selectedCategory)) {
+                // ── Auto-Miner Priority List rendering (MiningHelper category) ──
+                if ("MiningHelper".equals(selectedCategory)) {
                     optionY += 8;
 
                     // Section header
@@ -398,9 +410,11 @@ public class ConfigScreen extends Screen {
                     int addRowY = optionY + blockList.size() * rowHeight + 6;
                     graphics.drawString(this.font, "\u00A77Add block:",
                             optionX, addRowY - 12, 0xFFAAAAAA);
+                }
 
-                    // "Farm Setup" section label
-                    int farmSetupLabelY = addRowY + BUTTON_HEIGHT + 6;
+                // ── Farm Setup section label (FarmHelper category) ──
+                if ("FarmHelper".equals(selectedCategory)) {
+                    int farmSetupLabelY = optionY + 2;
                     graphics.drawString(this.font, "\u00A7e\u00A7lFarm Waypoint Setup:",
                             optionX, farmSetupLabelY, 0xFFFFFFFF);
                 }

@@ -87,6 +87,7 @@ public class FusionConfig {
                 "{location}",
                 "Pests: {pests_alive}",
                 "{pests_plots}",
+                "Pest CD: {pest_cooldown}",
                 "Spray: {spray}",
                 "Visitors: {visitors}",
                 "Jacob: {jacob_timer}",
@@ -138,6 +139,9 @@ public class FusionConfig {
         public int farmHelperMacroType = 0;  // 0 = S-Shape Vertical Crop
         public float farmHelperCustomYaw = 0f;
         public float farmHelperCustomPitch = 3f;
+        public boolean farmHelperAllowPestKilling = true;
+        public boolean farmHelperSethomeOnStart = true;
+        public boolean farmHelperUseFishingRodSwap = true;
 
         // ══════════════════════════════════════════════════════════════════
         // Solvers
@@ -204,6 +208,9 @@ public class FusionConfig {
     public static int getFarmHelperMacroType() { return data.farmHelperMacroType; }
     public static float getFarmHelperCustomYaw() { return data.farmHelperCustomYaw; }
     public static float getFarmHelperCustomPitch() { return data.farmHelperCustomPitch; }
+    public static boolean isFarmHelperAllowPestKilling() { return data.farmHelperAllowPestKilling; }
+    public static boolean isFarmHelperSethomeOnStart() { return data.farmHelperSethomeOnStart; }
+    public static boolean isFarmHelperUseFishingRodSwap() { return data.farmHelperUseFishingRodSwap; }
 
     // Solvers
     public static boolean isFetchurSolverEnabled() { return data.fetchurSolverEnabled; }
@@ -266,6 +273,9 @@ public class FusionConfig {
     public static void setFarmHelperMacroType(int v) { data.farmHelperMacroType = v; save(); }
     public static void setFarmHelperCustomYaw(float v) { data.farmHelperCustomYaw = v; save(); }
     public static void setFarmHelperCustomPitch(float v) { data.farmHelperCustomPitch = v; save(); }
+    public static void setFarmHelperAllowPestKilling(boolean v) { data.farmHelperAllowPestKilling = v; save(); }
+    public static void setFarmHelperSethomeOnStart(boolean v) { data.farmHelperSethomeOnStart = v; save(); }
+    public static void setFarmHelperUseFishingRodSwap(boolean v) { data.farmHelperUseFishingRodSwap = v; save(); }
 
     // Solvers
     public static void setFetchurSolverEnabled(boolean v) { data.fetchurSolverEnabled = v; save(); }
