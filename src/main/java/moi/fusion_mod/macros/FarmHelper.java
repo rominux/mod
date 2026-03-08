@@ -3,31 +3,24 @@ package moi.fusion_mod.macros;
 import moi.fusion_mod.config.FusionConfig;
 import moi.fusion_mod.ui.hud.ZoneInfoHud;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.KeyMapping;
-import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.AirBlock;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * FarmHelper — collision-based S-Shape vertical crop farming macro + basic pest killer.
- * Ported from FarmHelper v2 (1.8.9 Forge) to Fabric 1.21.10 Mojang mappings.
+ * FarmHelper — Waypoint-following crop farming macro + pest killer.
+ * Ported from FarmAuto.py's Maps_waypoints() function to Fabric 1.21.10 Mojang mappings.
  *
- * Movement uses direct key presses (keyLeft / keyRight) with collision detection:
- *   - Hold LEFT or RIGHT (relative to yaw) while holding attack to break crops
- *   - When the player stops moving (stuck against wall) for 10+ ticks, switch lane
- *   - Lane switch holds forward/backward until 1 block of distance is covered
- *   - Then reverse direction (LEFT <-> RIGHT)
- *
- * No waypoints, no vector projection — just direct strafing with wall detection.
+ * Movement uses vector projection onto forward/right axes derived from the fixed yaw,
+ * pressing W/A/S/D based on dot products to navigate between waypoints.
  * Restricted to Garden area only.
  */
 public class FarmHelper {
@@ -38,34 +31,47 @@ public class FarmHelper {
 
     public enum State {
         NONE,
-        LEFT,
-        RIGHT,
-        SWITCHING_LANE,
+        /** Actively navigating toward the current waypoint. */
+        NAVIGATING,
+        /** Pausing between waypoints to kill momentum (turn delay). */
+        TURN_DELAY,
+        /** Drop-down delay when next waypoint is significantly lower. */
+        DROP_DELAY,
+        /** Pest detected — aiming and vacuuming. */
         PEST_KILLING
     }
 
     private static boolean enabled = false;
     private static State currentState = State.NONE;
-    private static State previousState = State.NONE;
+    /** State to return to after pest killing finishes. */
+    private static State stateBeforePest = State.NONE;
 
-    // Fixed camera orientation for the farming session
+    // ── Fixed camera orientation ────────────────────────────────────────
     private static float yaw = 0f;
     private static float pitch = 3f;
 
-    // ── Collision detection ─────────────────────────────────────────────
-    // Previous position to measure movement delta each tick
-    private static double prevX = 0;
-    private static double prevY = 0;
-    private static double prevZ = 0;
-    // Counter: how many consecutive ticks the player has been stuck
-    private static int stuckTicks = 0;
-    // Threshold: consider "stuck" after this many ticks of near-zero movement
-    private static final int STUCK_THRESHOLD = 10; // 0.5 seconds
+    // ── Forward and Right vectors (computed once from yaw) ──────────────
+    private static double fx, fz; // Forward vector (W key direction)
+    private static double rx, rz; // Right vector (D key direction)
 
-    // ── Lane switching ──────────────────────────────────────────────────
-    private static boolean switchForward = true;
-    private static double laneStartX = 0;
-    private static double laneStartZ = 0;
+    // ── Waypoint system ─────────────────────────────────────────────────
+    private static List<Vec3> waypoints = new ArrayList<>();
+    private static int currentWaypointIndex = 0;
+
+    // ── Stuck detection ─────────────────────────────────────────────────
+    private static double prevX = 0;
+    private static double prevZ = 0;
+    private static int stuckTicks = 0;
+
+    // ── Turn delay counter (4 ticks = 0.2s at 20 TPS) ──────────────────
+    private static int turnDelayTicks = 0;
+    private static final int TURN_DELAY_DURATION = 4;
+
+    // ── Drop-down delay counter (4 ticks = 0.2s) ───────────────────────
+    private static int dropDelayTicks = 0;
+    private static final int DROP_DELAY_DURATION = 4;
+    /** Y difference threshold to trigger drop-down delay. */
+    private static final double DROP_Y_THRESHOLD = 0.5;
 
     // ── Pest killing ────────────────────────────────────────────────────
     private static Entity pestTarget = null;
@@ -99,6 +105,16 @@ public class FarmHelper {
     }
 
     /**
+     * Inject a waypoint list and camera angles from an external source.
+     * Index 0 is the "start" position; movement begins at index 1.
+     */
+    public static void setWaypoints(List<Vec3> newWaypoints, float newYaw, float newPitch) {
+        waypoints = new ArrayList<>(newWaypoints);
+        yaw = newYaw;
+        pitch = newPitch;
+    }
+
+    /**
      * Toggle the farm helper. Checks that the player is in the Garden before enabling.
      */
     public static void toggle() {
@@ -111,8 +127,18 @@ public class FarmHelper {
                     mc.player.displayClientMessage(
                             Component.literal("\u00A7cFarmHelper can only be used in the Garden!"), false);
                 }
-                return; // Do not enable
+                return;
             }
+
+            // Check that waypoints are loaded
+            if (waypoints.size() < 2) {
+                if (mc.player != null) {
+                    mc.player.displayClientMessage(
+                            Component.literal("\u00A7cFarmHelper: No waypoints loaded! Use setWaypoints() first."), false);
+                }
+                return;
+            }
+
             enabled = true;
             onEnable(mc);
         } else {
@@ -125,10 +151,6 @@ public class FarmHelper {
         if (!enabled || mc.player == null || mc.level == null)
             return;
 
-        // ── Enforce fixed camera orientation ────────────────────────────
-        mc.player.setYRot(yaw);
-        mc.player.setXRot(pitch);
-
         // ── Pest scanning (every PEST_SCAN_INTERVAL ticks) ─────────────
         pestScanCounter++;
         if (pestScanCounter >= PEST_SCAN_INTERVAL) {
@@ -136,13 +158,10 @@ public class FarmHelper {
             if (currentState != State.PEST_KILLING) {
                 Entity pest = findNearestPest(mc);
                 if (pest != null) {
-                    if (currentState != State.NONE) {
-                        previousState = currentState;
-                    }
+                    stateBeforePest = currentState;
                     currentState = State.PEST_KILLING;
                     pestTarget = pest;
                     pestKillTicks = 0;
-                    stuckTicks = 0;
                     stopAllKeys(mc);
                     switchToVacuum(mc);
                 }
@@ -154,8 +173,14 @@ public class FarmHelper {
             case PEST_KILLING:
                 tickPestKilling(mc);
                 break;
+            case TURN_DELAY:
+                tickTurnDelay(mc);
+                break;
+            case DROP_DELAY:
+                tickDropDelay(mc);
+                break;
             default:
-                tickFarming(mc);
+                tickNavigating(mc);
                 break;
         }
     }
@@ -165,34 +190,47 @@ public class FarmHelper {
     // ══════════════════════════════════════════════════════════════════════
 
     private static void onEnable(Minecraft mc) {
-        currentState = State.NONE;
-        previousState = State.NONE;
+        currentState = State.NAVIGATING;
+        stateBeforePest = State.NONE;
         stuckTicks = 0;
+        turnDelayTicks = 0;
+        dropDelayTicks = 0;
         pestTarget = null;
         pestScanCounter = 0;
 
-        // Set pitch from config
-        pitch = FusionConfig.getFarmHelperCustomPitch();
+        // Set pitch from config (may be overridden by setWaypoints)
+        if (pitch == 3f) {
+            pitch = FusionConfig.getFarmHelperCustomPitch();
+        }
 
-        // Set yaw: use config if nonzero, otherwise snap to nearest 90 degrees
+        // Set yaw: use setWaypoints value if already set, else config, else snap to 90
         float configYaw = FusionConfig.getFarmHelperCustomYaw();
-        if (configYaw != 0f) {
+        if (configYaw != 0f && yaw == 0f) {
             yaw = configYaw;
-        } else if (mc.player != null) {
+        } else if (yaw == 0f && mc.player != null) {
             yaw = getClosest90(mc.player.getYRot());
         }
+
+        // Compute forward and right vectors from yaw (done ONCE, like the Python)
+        computeDirectionVectors();
+
+        // Start at waypoint index 1 (index 0 is the start position)
+        currentWaypointIndex = 1;
 
         // Apply initial rotation and record position
         if (mc.player != null) {
             mc.player.setYRot(yaw);
             mc.player.setXRot(pitch);
             prevX = mc.player.getX();
-            prevY = mc.player.getY();
             prevZ = mc.player.getZ();
         }
 
+        // Hold attack throughout farming
+        mc.options.keyAttack.setDown(true);
+
         if (mc.player != null) {
-            mc.player.displayClientMessage(Component.literal("\u00A7aFarmHelper enabled"), true);
+            mc.player.displayClientMessage(
+                    Component.literal("\u00A7aFarmHelper enabled (" + waypoints.size() + " waypoints)"), true);
         }
     }
 
@@ -200,152 +238,158 @@ public class FarmHelper {
         stopAllKeys(mc);
         currentState = State.NONE;
         stuckTicks = 0;
+        turnDelayTicks = 0;
+        dropDelayTicks = 0;
         pestTarget = null;
         if (mc.player != null) {
             mc.player.displayClientMessage(Component.literal("\u00A7cFarmHelper disabled"), true);
         }
     }
 
+    /**
+     * Compute the forward (W) and right (D) direction vectors from the fixed yaw.
+     * These are computed once when farming starts, matching the Python behavior.
+     */
+    private static void computeDirectionVectors() {
+        double rad = Math.toRadians(yaw);
+        fx = -Math.sin(rad);
+        fz = Math.cos(rad);
+
+        double radR = Math.toRadians(yaw + 90);
+        rx = -Math.sin(radR);
+        rz = Math.cos(radR);
+    }
+
     // ══════════════════════════════════════════════════════════════════════
-    // S-Shape Farming — Collision-Based Movement
+    // Waypoint Navigation — Vector Projection Movement
     // ══════════════════════════════════════════════════════════════════════
 
-    private static void tickFarming(Minecraft mc) {
-        double playerX = mc.player.getX();
-        double playerY = mc.player.getY();
-        double playerZ = mc.player.getZ();
+    private static void tickNavigating(Minecraft mc) {
+        // ── Enforce fixed camera orientation ────────────────────────────
+        mc.player.setYRot(yaw);
+        mc.player.setXRot(pitch);
 
-        // ── If NONE, pick initial direction and start ──────────────────
-        if (currentState == State.NONE) {
-            currentState = calculateInitialDirection(mc);
-            stuckTicks = 0;
-            prevX = playerX;
-            prevY = playerY;
-            prevZ = playerZ;
+        double px = mc.player.getX();
+        double pz = mc.player.getZ();
+
+        // ── Check if we need to wrap around ────────────────────────────
+        if (currentWaypointIndex >= waypoints.size()) {
+            // Infinite loop: wrap back to index 1 (skip start waypoint)
+            currentWaypointIndex = 1;
         }
 
-        // ── Handle LEFT / RIGHT states ─────────────────────────────────
-        if (currentState == State.LEFT || currentState == State.RIGHT) {
-            // Hold the strafe key and attack
+        Vec3 target = waypoints.get(currentWaypointIndex);
+        double dx = target.x - px;
+        double dz = target.z - pz;
+        double dist2D = Math.sqrt(dx * dx + dz * dz);
+
+        // ── Stuck detection ────────────────────────────────────────────
+        if (Math.abs(px - prevX) < 0.005 && Math.abs(pz - prevZ) < 0.005) {
+            stuckTicks++;
+        } else {
+            stuckTicks = 0;
+        }
+        prevX = px;
+        prevZ = pz;
+
+        // ── Waypoint completion criteria ───────────────────────────────
+        // Reached if: very close (0.6) OR reasonably close (2.0) and stuck for 2+ ticks
+        if (dist2D <= 0.6 || (dist2D <= 2.0 && stuckTicks >= 2)) {
+            // Waypoint reached — enter turn delay
             stopMovementKeys(mc);
-            if (currentState == State.LEFT) {
-                mc.options.keyLeft.setDown(true);
-            } else {
-                mc.options.keyRight.setDown(true);
-            }
-            mc.options.keyAttack.setDown(true);
-
-            // Collision detection: measure how much the player actually moved
-            double movementSqr = squaredDistance2D(playerX, playerZ, prevX, prevZ);
-            if (movementSqr < 0.0001) {
-                stuckTicks++;
-            } else {
-                stuckTicks = 0;
-            }
-
-            // If stuck for more than STUCK_THRESHOLD ticks, end of row reached
-            if (stuckTicks >= STUCK_THRESHOLD) {
-                stopAllKeys(mc);
-                stuckTicks = 0;
-
-                // Transition to SWITCHING_LANE
-                previousState = currentState;
-                currentState = State.SWITCHING_LANE;
-                laneStartX = playerX;
-                laneStartZ = playerZ;
-                decideLaneDirection(mc);
-            }
-
-            prevX = playerX;
-            prevY = playerY;
-            prevZ = playerZ;
+            stuckTicks = 0;
+            turnDelayTicks = 0;
+            currentState = State.TURN_DELAY;
             return;
         }
 
-        // ── Handle SWITCHING_LANE state ────────────────────────────────
-        if (currentState == State.SWITCHING_LANE) {
-            stopMovementKeys(mc);
-            mc.options.keyAttack.setDown(false);
+        // ── Vector projection: compute which keys to press ─────────────
+        double fwdVal = dx * fx + dz * fz;   // dot product onto forward axis
+        double rightVal = dx * rx + dz * rz; // dot product onto right axis
 
-            // Hold forward or backward to move to the next crop row
-            if (switchForward) {
-                mc.options.keyUp.setDown(true);
-            } else {
-                mc.options.keyDown.setDown(true);
-            }
-            mc.options.keySprint.setDown(true);
+        // Dead zone of 0.1 to prevent jitter
+        mc.options.keyUp.setDown(fwdVal > 0.1);
+        mc.options.keyDown.setDown(fwdVal < -0.1);
+        mc.options.keyRight.setDown(rightVal > 0.1);
+        mc.options.keyLeft.setDown(rightVal < -0.1);
 
-            // Measure distance moved during the lane switch
-            double switchDist = Math.sqrt(squaredDistance2D(playerX, playerZ, laneStartX, laneStartZ));
-
-            if (switchDist >= 1.0) {
-                // Done switching — go the opposite direction
-                stopAllKeys(mc);
-                stuckTicks = 0;
-
-                if (previousState == State.LEFT) {
-                    currentState = State.RIGHT;
-                } else {
-                    currentState = State.LEFT;
-                }
-            }
-
-            prevX = playerX;
-            prevY = playerY;
-            prevZ = playerZ;
-        }
-    }
-
-    /**
-     * Determine initial farming direction (LEFT or RIGHT).
-     * Checks which side has more walkable space.
-     */
-    private static State calculateInitialDirection(Minecraft mc) {
-        boolean rightWalkable = isWalkable(mc, getRelativeBlockPos(mc, 1, 0, 0));
-        boolean leftWalkable = isWalkable(mc, getRelativeBlockPos(mc, -1, 0, 0));
-
-        if (rightWalkable && !leftWalkable) return State.RIGHT;
-        if (leftWalkable && !rightWalkable) return State.LEFT;
-        // Default: try right
-        return State.RIGHT;
-    }
-
-    /**
-     * Decide whether to switch lane forward or backward.
-     */
-    private static void decideLaneDirection(Minecraft mc) {
-        boolean frontWalkable = isWalkable(mc, getRelativeBlockPos(mc, 0, 0, 1));
-        boolean backWalkable = isWalkable(mc, getRelativeBlockPos(mc, 0, 0, -1));
-
-        if (frontWalkable) {
-            switchForward = true;
-        } else if (backWalkable) {
-            switchForward = false;
-        } else {
-            // Neither direction works, just try forward
-            switchForward = true;
-        }
-    }
-
-    /**
-     * Squared 2D distance (XZ plane only).
-     */
-    private static double squaredDistance2D(double x1, double z1, double x2, double z2) {
-        double dx = x1 - x2;
-        double dz = z1 - z2;
-        return dx * dx + dz * dz;
+        // Keep attacking throughout
+        mc.options.keyAttack.setDown(true);
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    // Pest Killing
+    // Turn Delay — Kill momentum between waypoints (4 ticks = 0.2s)
+    // ══════════════════════════════════════════════════════════════════════
+
+    private static void tickTurnDelay(Minecraft mc) {
+        // Enforce fixed camera even during delay
+        mc.player.setYRot(yaw);
+        mc.player.setXRot(pitch);
+
+        // All movement keys are already released; just count ticks
+        turnDelayTicks++;
+
+        if (turnDelayTicks >= TURN_DELAY_DURATION) {
+            turnDelayTicks = 0;
+
+            // Check if next waypoint requires a drop-down delay
+            int prevIndex = currentWaypointIndex;
+            currentWaypointIndex++;
+
+            // Wrap around for the check
+            int nextIdx = currentWaypointIndex;
+            if (nextIdx >= waypoints.size()) {
+                nextIdx = 1; // will wrap on next tick
+            }
+
+            // Check drop-down: if next waypoint Y is lower by > 0.5 blocks
+            Vec3 prevWp = waypoints.get(prevIndex);
+            if (nextIdx < waypoints.size()) {
+                Vec3 nextWp = waypoints.get(nextIdx);
+                if (nextWp.y < prevWp.y - DROP_Y_THRESHOLD) {
+                    dropDelayTicks = 0;
+                    currentState = State.DROP_DELAY;
+                    return;
+                }
+            }
+
+            // No drop needed — resume navigating
+            currentState = State.NAVIGATING;
+            // Re-enable attack
+            mc.options.keyAttack.setDown(true);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Drop-Down Delay — Extra pause when dropping to a lower waypoint
+    // ══════════════════════════════════════════════════════════════════════
+
+    private static void tickDropDelay(Minecraft mc) {
+        // Enforce fixed camera
+        mc.player.setYRot(yaw);
+        mc.player.setXRot(pitch);
+
+        dropDelayTicks++;
+        if (dropDelayTicks >= DROP_DELAY_DURATION) {
+            dropDelayTicks = 0;
+            currentState = State.NAVIGATING;
+            mc.options.keyAttack.setDown(true);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Pest Killing (preserved from original)
     // ══════════════════════════════════════════════════════════════════════
 
     private static void tickPestKilling(Minecraft mc) {
         if (pestTarget == null || !pestTarget.isAlive() || pestTarget.isRemoved()) {
             // Pest is dead or gone, return to farming
             pestTarget = null;
-            currentState = previousState != State.PEST_KILLING ? previousState : State.NONE;
+            currentState = (stateBeforePest != State.PEST_KILLING && stateBeforePest != State.NONE)
+                    ? stateBeforePest : State.NAVIGATING;
             stuckTicks = 0;
+            // Re-enable attack for farming
+            mc.options.keyAttack.setDown(true);
             return;
         }
 
@@ -354,8 +398,10 @@ public class FarmHelper {
         if (dist > 20 * 20) {
             // Too far, give up
             pestTarget = null;
-            currentState = previousState != State.PEST_KILLING ? previousState : State.NONE;
+            currentState = (stateBeforePest != State.PEST_KILLING && stateBeforePest != State.NONE)
+                    ? stateBeforePest : State.NAVIGATING;
             stuckTicks = 0;
+            mc.options.keyAttack.setDown(true);
             return;
         }
 
@@ -383,7 +429,8 @@ public class FarmHelper {
         if (pestKillTicks > 200) { // 10 seconds timeout
             pestTarget = null;
             mc.options.keyAttack.setDown(false);
-            currentState = previousState != State.PEST_KILLING ? previousState : State.NONE;
+            currentState = (stateBeforePest != State.PEST_KILLING && stateBeforePest != State.NONE)
+                    ? stateBeforePest : State.NAVIGATING;
             stuckTicks = 0;
         }
     }
@@ -470,38 +517,8 @@ public class FarmHelper {
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    // Block / Walkability Utilities
+    // Utility
     // ══════════════════════════════════════════════════════════════════════
-
-    /**
-     * Get a block position relative to the player's facing direction (using fixed yaw).
-     * dx = right(+)/left(-), dy = up/down, dz = forward(+)/backward(-)
-     */
-    private static BlockPos getRelativeBlockPos(Minecraft mc, int dx, int dy, int dz) {
-        if (mc.player == null) return BlockPos.ZERO;
-
-        float radYaw = (float) Math.toRadians(yaw);
-        float sinYaw = Mth.sin(radYaw);
-        float cosYaw = Mth.cos(radYaw);
-
-        // Forward = -sinYaw, cosYaw (Minecraft convention)
-        // Right = cosYaw, sinYaw
-        double worldX = mc.player.getX() + (dx * cosYaw + dz * (-sinYaw));
-        double worldZ = mc.player.getZ() + (dx * sinYaw + dz * cosYaw);
-        double worldY = mc.player.getY() + dy;
-
-        return new BlockPos((int) Math.floor(worldX), (int) Math.floor(worldY), (int) Math.floor(worldZ));
-    }
-
-    /**
-     * Check if a block position is walkable (air at feet and head level).
-     */
-    private static boolean isWalkable(Minecraft mc, BlockPos pos) {
-        if (mc.level == null) return false;
-        boolean feetAir = mc.level.getBlockState(pos).getBlock() instanceof AirBlock;
-        boolean headAir = mc.level.getBlockState(pos.above()).getBlock() instanceof AirBlock;
-        return feetAir && headAir;
-    }
 
     /**
      * Snap an angle to the nearest 90-degree increment.
